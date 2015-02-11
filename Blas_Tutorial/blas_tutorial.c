@@ -10,6 +10,9 @@ double computeTanh(double x);
 double computeSigmoid(double x);
 double *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc);
 void testfunct(double *v);
+double *initialiseWeights(int rows, int columns,int srcDim);
+double *initialiseBias(int dim, int srcDim);
+
 
 static double *arr;
 
@@ -125,6 +128,39 @@ double *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
 	}
 	return yfeatMat;
 }
+
+double *initialiseBias(int dim, int srcDim){
+	int i;
+	double randm;
+	double* biasVec;
+	weighMat =  malloc(sizeof(double)*(dim));
+	srand((unsigned int)time(NULL));
+	for ( i = 0; i<dim;i++){
+		randm = double(rand())/double(RAND_MAX);
+		biasVec[i] = randm*sqrt(srcDim)
+	}
+	return biasVec;
+
+}
+/*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
+to be inversely proportional to the sqrt(fanin)
+*/ 
+double *initialiseWeights(int rows, int columns,int srcDim){
+	int i;
+	double randm;
+	double* weighMat;
+	weighMat =  malloc(sizeof(double)*(rows*columns));
+	srand((unsigned int)time(NULL));
+	for ( i = 0; i<(rows*columns);i++){
+		randm = double(rand())/double(RAND_MAX);
+		weighMat[i] = randm*sqrt(srcDim)
+	}
+	return weighMat;
+}
+
+
+
+
 
 void testfunct(double *v){
 	int i;
