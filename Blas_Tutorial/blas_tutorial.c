@@ -1,33 +1,87 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 typedef enum {SIGMOID,IDENTITY,TANH} ActFunKind;
 
 double computeTanh(double x);
 double computeSigmoid(double x);
-double *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc);
+void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc);
 void testfunct(double *v);
-double *initialiseWeights(int rows, int columns,int srcDim);
-double *initialiseBias(int dim, int srcDim);
+
+void initialiseWeights(double *weightMat,int length,int srcDim);
+void initialiseBias(double *biasVec,int dim, int srcDim);
+double random_normal() ;
+double drand()  ;
+
+static double randSeed;
+
 
 
 static double *arr;
 
 int main(){
 
-	int i;
+	char *ptr;
+	int *stateIdx;
+   int i;
 	int dim;
 	int srcDim;
 	int size;
 	double weights[] ={ 2, 0,0,2,1,0,0,2};
+	double *weightmat;
+	double *biasVec;
 
 	dim = 4;
 	srcDim = 2;
-	double *linearActivation = malloc(sizeof(double)*dim);
 	
+	ptr =malloc(sizeof(char));
+	
+	if(ptr==NULL){
+		printf("Null pointer 1\n");
+	}else{
+		printf("value of ptr %c\n",*ptr );
+	}
+
+	*ptr = '\0';
+	printf("value ptr %c\n",*ptr);
+	
+	printf("the value is %d\n",atoi(++ptr));
+	
+	free((ptr-1));
+	
+
+//------------------------------------------------------------------
+	/**testing the initialisation of weights and bias*/
+	printf("This is ok here 1\n");
+	weightmat =malloc(sizeof(double)*(3*5));
+	printf("This is ok here 2\n");
+
+	initialiseWeights(weightmat,15,5);
+	printf("This is ok here 3\n");
+	for(i = 0; i<15;i++){
+		printf(" the weights are  %d  %lf\n",i,weightmat[i] );
+	}
+	free(weightmat);
+	printf("\n");
+	biasVec = malloc(sizeof(double)*3);
+	initialiseBias(biasVec,3,5);
+	for(i = 0; i<15;i++){
+		printf(" the bias are  %d  %lf\n",i,biasVec[i] );
+	}
+	free(biasVec);
+	
+
+	//---------------------------------------------------------------
+
+	double *linearActivation = malloc(sizeof(double)*dim);
+
 	double vector[] = { 1,1,1};
 	double test3[] ={1,1};
 	double bias[] = { 0,0,1,1};
@@ -46,15 +100,19 @@ int main(){
 	double norm;
 
 	printf("reaches here 1\n");
+	//-----------------------------------------------------------
+
+	/*testing for memory leaks*/
 	arr = (double *) malloc(sizeof(double)*3);
 	testfunct(vector);
 	for(i = 0; i<srcDim;i++){
-		printf(" the output is %d  %lf\n",i,arr[i] );
+		printf(" the output is %lf and the vector   %lf\n",arr[i],vector[i] );
 	}
 	printf("reaches here 2 \n");
 
 	free(arr);
 
+	//-------------------------------------------------------
 	printf("reaches here 3\n");
 
 	cblas_dgemv(CblasRowMajor,CblasNoTrans,dim,srcDim,1,weights,srcDim,test3,1,0,linearActivation,1);
@@ -64,12 +122,12 @@ int main(){
 	for(i = 0; i<dim;i++){
 		printf(" the output is %d  %lf\n",i,linearActivation[i] );
 	}
-	linearActivation = computeActOfLayer(linearActivation,dim,SIGMOID);
+	computeActOfLayer(linearActivation,dim,SIGMOID);
 	for(i = 0; i<dim;i++){
 		printf(" the output is %d  %lf\n",i,linearActivation[i] );
 	}
 
-	linearActivation = computeActOfLayer(linearActivation,dim,TANH);
+	computeActOfLayer(linearActivation,dim,TANH);
 	for(i = 0; i<dim;i++){
 		printf(" the output is %d  %lf\n",i,linearActivation[i] );
 	}
@@ -110,7 +168,7 @@ double computeSigmoid(double x){
 	return result;
 }
 
-double *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
+void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
 	int i = 0;
 	switch(actfunc){
 		case SIGMOID:
@@ -126,48 +184,50 @@ double *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
 		default:
 			break;	
 	}
-	return yfeatMat;
+	
 }
 
-double *initialiseBias(int dim, int srcDim){
+double drand()   /* uniform distribution, (0..1] */
+{return (rand()+1.0)/(RAND_MAX+1.0);
+}
+/* normal distribution, centered on 0, std dev 1 */
+double random_normal() {
+  return sqrt(-2*log(drand())) * cos(2*M_PI*drand());
+}
+
+void initialiseBias(double *biasVec,int dim, int srcDim){
 	int i;
 	double randm;
-	double* biasVec;
-	weighMat =  malloc(sizeof(double)*(dim));
-	srand((unsigned int)time(NULL));
+	
 	for ( i = 0; i<dim;i++){
-		randm = double(rand())/double(RAND_MAX);
-		biasVec[i] = randm*sqrt(srcDim)
+		randm = random_normal();
+		biasVec[i] = randm*(1/sqrt(srcDim));
 	}
-	return biasVec;
+	
 
 }
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
 to be inversely proportional to the sqrt(fanin)
 */ 
-double *initialiseWeights(int rows, int columns,int srcDim){
+void initialiseWeights(double *weightMat,int length,int srcDim){
 	int i;
 	double randm;
-	double* weighMat;
-	weighMat =  malloc(sizeof(double)*(rows*columns));
 	srand((unsigned int)time(NULL));
-	for ( i = 0; i<(rows*columns);i++){
-		randm = double(rand())/double(RAND_MAX);
-		weighMat[i] = randm*sqrt(srcDim)
+	for ( i = 0; i<(length);i++){
+		randm = random_normal();
+		weightMat[i] = randm*1/(sqrt(srcDim));
 	}
-	return weighMat;
+	
 }
-
-
 
 
 
 void testfunct(double *v){
 	int i;
-	double *value;
-	value = computeActOfLayer(v,3,SIGMOID);
+	
+	computeActOfLayer(v,3,SIGMOID);
 	for (i =0; i<3 ;i++){
-		arr[i] = value[i];
+		arr[i] = v[i];
 	}
 
 
