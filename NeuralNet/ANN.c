@@ -130,7 +130,7 @@ double computeSigmoid(double x){
 	return result;
 }
 
-void *computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
+void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
 	int i = 0;
 	switch(actfunc){
 		case SIGMOID:
