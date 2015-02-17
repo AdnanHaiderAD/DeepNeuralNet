@@ -12,15 +12,17 @@
 
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
-static int numHiddenLayers;
+static int numLayers;
 static int inputDim;
 static OutFuncKind outputfunc;
-static ADLINk anndef;
+static ADLink anndef;
 
 //--------------------------------------------------------------------------------
+/**this section of the src code deals with initialisation of ANN **/
+
 void initialiseFeaElem(FELink feaElem, FELink srcElem){
-	feaElem->xfeaMat = srcElem->yfeatMat;
-	feaElem->yfeatMat = NULL;
+	feaElem->xfeatMat = srcElem->yfeatMat;
+	
 }
 
 double drand()   /* uniform distribution, (0..1] */
@@ -34,6 +36,7 @@ double random_normal() {
 
 void initialiseBias(double *biasVec,int dim, int srcDim){
 	int i;
+	double randm;
 	for ( i = 0; i<dim;i++){
 		randm = random_normal();
 		biasVec[i] = randm*(1/sqrt(srcDim));
@@ -42,19 +45,19 @@ void initialiseBias(double *biasVec,int dim, int srcDim){
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
 to be inversely proportional to the sqrt(fanin)
 */ 
-void initialiseWeights(double *weightMat,int length,int srcDim){
+void initialiseWeights(double *weights,int length,int srcDim){
 	int i;
 	double randm;
 	for ( i = 0; i<(length);i++){
 		randm = random_normal();
-		weightMat[i] = randm*1/(sqrt(srcDim));
+		weights[i] = randm*1/(sqrt(srcDim));
 	}
 	
 }
 void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	int numOfElems;
 	
-	layer->layerId = i;
+	layer->id = i;
 	layer->dim = hidUnitsPerLayer[i-1];
 	layer->actfuncKind = actfunLists[i-1];
 	layer->src = srcLayer;
@@ -65,16 +68,18 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	numOfElems = (layer->dim) *(layer->srcDim);
 	layer-> weights = malloc(sizeof(double)*numOfElems);
 	assert(layer->weights!=NULL);
-	initialiseWeights(layer->weightMat,numOfElems,layer->srcDim);
+	initialiseWeights(layer->weights,numOfElems,layer->srcDim);
 	
 	layer->bias = malloc(sizeof(double)*(layer->dim));
 	assert(layer->bias!=NULL);
-	initialiseBias(bias,layer->dim, layer->srcDim);
+	initialiseBias(layer->bias,layer->dim, layer->srcDim);
 
-	layer->feaElem = (FELink)malloc(sizeof(FeaELem));
+	layer->feaElem = (FELink)malloc(sizeof(FeaElem));
 	assert(layer->feaElem!=NULL);
-	initialiseFeaElem(layer->feaElem,layer->srcLayer->feaElem);
-	if (i == (numHiddenLayers-1)){
+	initialiseFeaElem(layer->feaElem,layer->src->feaElem);
+	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim));
+
+	if (i == (numLayers-1)){
 		layer->type = OUTPUT;
 	}else{
 		layer->type = HIDDEN;
@@ -82,7 +87,7 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	layer->errElem = NULL;
 }
 
-void initialiseInputLayer(LELink inputlayer){
+void initialiseInputLayer(LELink layer){
 	layer->id = 0;
 	layer->dim = inputDim;
 	layer->actfuncKind = IDENTITY;
@@ -92,32 +97,35 @@ void initialiseInputLayer(LELink inputlayer){
 	layer->type = INPUT;
 	layer->errElem = NULL;
 	
-	layer->feaElem = (FELink) malloc(sizeof(FeaELem));
-	assert(layer->FeaELem!=NULL);
-	layer->feElem->xfeaMat= NULL;//this line may need to be changed later
-	layer->feElem->yfeatMat = malloc(sizeof(double)*(layer->dim));
+	layer->feaElem = (FELink) malloc(sizeof(FeaElem));
+	assert(layer->feaElem!=NULL);
+	layer->feaElem->xfeatMat= NULL;
+	layer->feaElem->yfeatMat = malloc (sizeof(double)*inputDim);//this line may need to be changed later
 	assert(layer->feaElem->yfeatMat!=NULL);
-}
+}	
 
 void  initialiseANN(){
 	int i;
 	anndef = malloc(sizeof(ANNDef));
 	assert(anndef!=NULL);
-
+	
 	anndef->outfunc = outputfunc;
-	anndef->layerNum = numHiddenLayers;
+	anndef->layerNum = numLayers;
+	anndef->layerList = malloc (sizeof(LELink)*numLayers);
+	assert(anndef->layerList!=NULL);
 	for(i = 0; i<anndef->layerNum; i++){
-		if (i = 0 ){
-			anndef->layerList[i] = (LELink) malloc (sizeof(LayerElem));
-			asset(anndef->layerList[i]!=NULL);
+		if (i == 0 ){
+			anndef->layerList[i] = malloc (sizeof(LayerElem));
+			assert (anndef->layerList[i]!=NULL);
 			initialiseInputLayer(anndef->layerList[i]);
+			
 		}else{
 			anndef->layerList[i] = (LELink) malloc (sizeof(LayerElem));
-			asset(anndef->layerList[i]!=NULL);
+			assert(anndef->layerList[i]!=NULL);
 			initialiseLayer(anndef->layerList[i],i, anndef->layerList[i-1]);
 		}	
 	}
-
+	
 }
 //----------------------------------------------------------------------------------------------
 double computeTanh(double x){
@@ -131,11 +139,14 @@ double computeSigmoid(double x){
 }
 
 void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
-	int i = 0;
+	int i ;
+	printf("THE DIM IS %d\n",dim);
 	switch(actfunc){
 		case SIGMOID:
 			for (i = 0;i < dim;i++){
+				printf("Value of linear activation %f \n", yfeatMat[i]);
 				yfeatMat[i] = computeSigmoid(yfeatMat[i]);
+				printf("value of activation %f \n",yfeatMat[i]);
 			}
 			break;
 		case TANH:
@@ -148,14 +159,16 @@ void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc){
 	}
 }
 
-void computeLinearActivation(FELink layer){
-	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim));
-	assert(layer->feaElem->yfeatMat!=NULL);
-	/* y = a W*x + By- Here B=0 and a =1*/
-	cblas_dgemv(CblasRowMajor,CblasNoTrans,layer->dim,layer->srcDim,1,layer->weights,layer->srcDim,layer->feaElem->xfeaMat,1,0,layer->feaElem->yfeatMat,1);
-	/*y = y+ b- adding the bias*/
-	cblas_daxpy(dim,1,layer->bias,1,layer->feaElem->yfeatMat,1);
-	
+void computeLinearActivation(LELink layer){
+	if (layer->dim > 1){
+		/* y = a W*x + By- Here B=0 and a =1*/
+		cblas_dgemv(CblasRowMajor,CblasNoTrans,layer->dim,layer->srcDim,1,layer->weights,layer->srcDim,layer->feaElem->xfeatMat,1,0,layer->feaElem->yfeatMat,1);
+		/*y = y+ b- adding the bias*/
+		cblas_daxpy(layer->dim,1,layer->bias,1,layer->feaElem->yfeatMat,1);
+	}else{
+		layer->feaElem->yfeatMat[0] = cblas_ddot(layer->src->dim,layer->weights,1,layer->feaElem->xfeatMat,1);
+		layer->feaElem->yfeatMat[0] = layer->feaElem->yfeatMat[0]+layer->bias[0];
+	}	
 }
 
 void fwdPassOfANN(){
@@ -166,9 +179,8 @@ void fwdPassOfANN(){
 				for (i = 1; i< anndef->layerNum;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
-					if (i !=(layerNum-1)){
-						computeActOfLayer(layer->feaElem->yfeatMat,layer->dim,layer->actfuncKind);
-					}
+					computeActOfLayer(layer->feaElem->yfeatMat,layer->dim,layer->actfuncKind);
+					
 				}
 				break;
 			case CLASSIFICATION:
@@ -179,5 +191,96 @@ void fwdPassOfANN(){
 				}
 				break;	
 	}
+}
+
+void freeMemory(){
+	int i;
+	if (anndef != NULL){
+		for (i = 0;i<numLayers;i++){
+			if (anndef->layerList[i] !=NULL){
+				if (anndef->layerList[i]->feaElem != NULL){
+					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
+						free (anndef->layerList[i]->feaElem->yfeatMat);
+					}
+					free(anndef->layerList[i]->feaElem);
+				}
+				if (anndef->layerList[i]->weights !=NULL){
+					free (anndef->layerList[i]->weights);
+				}
+				if (anndef->layerList[i]->bias !=NULL){
+					free (anndef->layerList[i]->bias);
+				}
+				free (anndef->layerList[i]);
+			}
+		}
+		free(anndef->layerList);	
+		free(anndef);
+		
+	}	
+}
+
+//=================================================================================
+
+int main(){
+	int i;
+	/*testing forward pass of ANN*
+	
+	Test 1 : with single input 
+
+	The structure of ANN is 3 layers : input layer dim =2, hidden layer dim =3, 
+	output layer dim =1, the output of ANN is regression
+	*/
+	//initialise
+	ActFunKind list[] = {SIGMOID,SIGMOID};
+	actfunLists = list;
+	int arr[] ={3,1};
+	hidUnitsPerLayer = arr;
+	numLayers = 3; ;
+	inputDim = 2;
+	outputfunc = CLASSIFICATION;
+	printf("Debug : 1 \n");
+	initialiseANN();
+
+	anndef->layerList[0]->feaElem->yfeatMat[0] = 1;
+	anndef->layerList[0]->feaElem->yfeatMat[1] = 1;
+
+	/** printing the output of the hidden and output units **/
+	fwdPassOfANN();
+
+	/** printin out the weights and bias of the hidden layer**/
+	printf("1st check %d\n",(anndef->layerList[0]->dim*anndef->layerList[1]->dim));
+	printf("2nd check %d\n",(anndef->layerList[0]->dim -1));
+	for (i = 0; i < (anndef->layerList[0]->dim*anndef->layerList[1]->dim);i+=(anndef->layerList[0]->dim )){
+		printf("the weights to  hidden unit is %f  %f \n ",anndef->layerList[1]->weights[i],anndef->layerList[1]->weights[i+1]);
+
+	}
+	printf("the bias to the first hidden layer is %f %f %f \n",anndef->layerList[1]->bias[0],anndef->layerList[1]->bias[1],anndef->layerList[1]->bias[2]);
+	
+	/**printing out the outputs of the hidden layer*/
+	for (i =0 ; i <anndef->layerList[1]->dim;i+=anndef->layerList[1]->dim){
+		printf("the outputs for hidden units is %f ,%f, %f \n\n",anndef->layerList[1]->feaElem->yfeatMat[i],anndef->layerList[1]->feaElem->yfeatMat[i+1],anndef->layerList[1]->feaElem->yfeatMat[i+2]);
+	}	
+
+	/**printing out the weights and bias associated with the output layer **/
+	for (i = 0; i < anndef->layerList[2]->dim*anndef->layerList[1]->dim;i+=anndef->layerList[1]->dim){
+	printf ( "the weights to the output is %f,%f,%f \n",anndef->layerList[2]->weights[i],anndef->layerList[2]->weights[i+1],anndef->layerList[2]->weights[i+2]);
+	}
+	printf ("the bias to the final output is  %f \n ",anndef->layerList[2]->bias[0]);
+	
+	
+	for (i =0 ;i<anndef->layerList[2]->dim;i++){
+	printf("The output of ANN is %f\n",anndef->layerList[2]->feaElem->yfeatMat[i]);
+	}
+
+
+
+
+	freeMemory();
+
+	
+
+
+
+
 }
 

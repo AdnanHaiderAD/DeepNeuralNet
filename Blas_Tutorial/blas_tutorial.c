@@ -40,6 +40,15 @@ int main(){
 
 	dim = 4;
 	srcDim = 2;
+
+	/**testing the dot product of two vectors */
+	double p[] =  {0.47021, 0.761908,0.0000};
+	double s[] ={0.458996,-0.329061,0.234};
+
+
+	printf("the dot product is A %f \n",cblas_ddot(3,p,1,s,1) );
+
+	//----------------------------------------------------
 	
 	ptr =malloc(sizeof(char));
 	
