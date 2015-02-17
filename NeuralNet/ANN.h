@@ -23,7 +23,7 @@ typedef struct _FeatElem{
 typedef struct _LayerElem{
 	int  id; /* each layer has a unique layer id */
 	int  dim ; /* number of units in the hidden layer */
-	LayerRole type; /* the type of layer : input,hidden or output */
+	LayerRole role; /* the type of layer : input,hidden or output */
 	ActFunKind actfuncKind; /*each layer is allowed to have its own non-linear activation function */
 	LELink src; /* pointer to the input layer */
 	int srcDim; /* the number of units in the input layer */
@@ -52,7 +52,7 @@ void  initialiseANN();
 
 double computeTanh(double x);
 double computeSigmoid(double x);
-void computeActOfLayer(double* yfeatMat, int dim,  ActFunKind actfunc);
+void computeActOfLayer(LELink layer);
 void computeLinearActivation(LELink layer);
 void fwdPassOfANN();
 
