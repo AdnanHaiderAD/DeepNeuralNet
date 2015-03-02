@@ -30,7 +30,7 @@ int main(){
 
 	char *ptr;
 	int *stateIdx;
-   int i;
+   int i,off;
 	int dim;
 	int srcDim;
 	int size;
@@ -47,6 +47,81 @@ int main(){
 
 
 	printf("the dot product is A %f \n",cblas_ddot(3,p,1,s,1) );
+
+	//====================================================
+	 int lda = 3;
+
+  float A1[] = { 0.11, 0.12, 0.13,
+                0.21, 0.22, 0.23 };
+
+  float A2[] ={ 1.0 ,0 ,0, 0,1,0};              
+  float ones[] ={1,1,1};
+  float sumCOls[] ={ 0,0};
+
+  int ldb = 2;
+  
+  float B[] = { 1011, 1012,
+                1021, 1022,
+                1031, 1032 };
+
+  int ldc = 2;
+
+  float C[] = {0.00, 0.00,0.00,
+                0.00, 0.00 ,000,
+             	0.00 ,0.00, 0.00 };
+
+  /* Compute C = A B */
+
+  cblas_sgemm (CblasColMajor, 
+               CblasNoTrans, CblasTrans, 2, 2, 3,
+               1.0, A1,2, B, 2, 0.0, C, 2);
+
+  printf ("[ %g, %g\n", C[0], C[1]);
+  printf ("  %g, %g ]\n", C[2], C[3]);
+  printf ("  %g, %g ]\n", C[4], C[5]);
+
+  cblas_sgemv(CblasRowMajor,CblasNoTrans, 2,3,1,A1,3,ones,1,0,sumCOls,1);
+  printf ("[ %g, %g\n", sumCOls[0], sumCOls[1]);
+  //printf ("[ %g, %g\n", sumCOls[2], sumCOls[3]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//=======================================================
+   /*  W is 4 by 2 and X is 3 by 2 so X *W^T be 3 by 4*/
+	float W [] ={ 1, 1, 0,
+						0,0,0};
+	float X[] ={ 0, 1,
+						1 ,0,
+						1,1};
+	
+	float r[]  = {0,0,0,0};  
+	float b[] ={11,11};
+
+	cblas_sgemm(CblasRowMajor,CblasTrans,CblasNoTrans,2,2,3,1,W,2,X,2,0,r,2);
+	
+	for (i=0;i<4;i++){
+		printf("the CHECK output is %f\n ",r[i]);
+	}
+	for (i =0, off = 0; i < 2;++i, off += 2){
+		cblas_scopy(2, b, 1, r + off, 1);
+	}
+	for (i=0;i<4;i++){
+		printf("the new CHECK output is %f\n ",r[i]);
+	}
+
+
 
 	//----------------------------------------------------
 	
@@ -102,13 +177,16 @@ int main(){
 	/*matrix*/
 	double A[] ={ 3, 0, 0,0,3,0,0,0,3};
 	
-	
 
 	float dotproduct;
 	double result;
 	double norm;
 
 	printf("reaches here 1\n");
+
+	
+
+
 	//-----------------------------------------------------------
 
 	/*testing for memory leaks*/

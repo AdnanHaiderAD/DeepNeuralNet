@@ -9,25 +9,40 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#ifndef BATCHSAMPLES
+#define BATCHSAMPLES 2
+#endif
 
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
 static int numLayers;
 static int inputDim;
-static OutFuncKind outputfunc;
+static int targetDim;
+static OutFuncKind target;
+static ObjFuncKind errfunc;
 static ADLink anndef;
 
 //--------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
-
-void initialiseFeaElem(FELink feaElem, FELink srcElem){
-	feaElem->xfeatMat = srcElem->yfeatMat;
+void initialiseErrElems(ADLink anndef){
+	int i;
+	LELink layer,srcLayer;
+	for (i = 0; i < anndef->layerNum ;i++){
+		layer = anndef->layerList[i];
+		layer->errElem = (ERLink) malloc (sizeof(ErrElem));
+		layer->errElem->dxFeatMat = (double *) malloc(sizeof(double)* (layer->dim*layer->srcDim));	
+		if ( i!=0){
+			srcLayer = layer->src;
+			srcLayer->errElem->dyFeatMat = layer->errElem->dxFeatMat;
+		}	
+	}
 	
 }
 
 double drand()   /* uniform distribution, (0..1] */
 {return (rand()+1.0)/(RAND_MAX+1.0);
 }
+
 /* performing the Box Muller transform to map two numbers 
 generated from a uniform distribution to a number from a normal distribution centered at 0 with standard deviation 1 */
 double random_normal() {
@@ -45,103 +60,108 @@ void initialiseBias(double *biasVec,int dim, int srcDim){
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
 to be inversely proportional to the sqrt(fanin)
 */ 
-void initialiseWeights(double *weights,int length,int srcDim){
-	int i;
+void initialiseWeights(double *weights,int dim,int srcDim){
+	int i,j;
 	double randm;
-	for ( i = 0; i<(length);i++){
-		randm = random_normal();
-		weights[i] = randm*1/(sqrt(srcDim));
+	//this is not an efficient way of doing but it allows better readibility
+	for (i = 0; i < dim; i++){
+		for(j = 0; j < srcDim;j++){
+			randm = random_normal();
+			printf("value %f\n",randm * 1/(sqrt(srcDim)));
+			*weights = randm * 1/(sqrt(srcDim));
+			weights = weights + 1;
+		}
 	}
-	
 }
 void initialiseLayer(LELink layer,int i, LELink srcLayer){
-	int numOfElems;
-	
+	int srcDim,numOfElems;
+	if (srcLayer != NULL ){
+		srcDim = srcLayer->dim;
+	}else{
+		srcDim = inputDim;
+	}
+
 	layer->id = i;
-	layer->dim = hidUnitsPerLayer[i-1];
-	layer->actfuncKind = actfunLists[i-1];
 	layer->src = srcLayer;
-	layer->srcDim = srcLayer->dim;
+	layer->srcDim = srcDim;
 	
+	//setting the layer's role
 	if (i == (anndef->layerNum-1)){
 		layer->role = OUTPUT;
+		layer->dim = targetDim;
 	}else{
 		layer->role = HIDDEN;
+		layer->dim = hidUnitsPerLayer[i];
 	}
-	/*initialise the seed only once then initialise weights and bias*/
-	srand((unsigned int)time(NULL));
-	if (layer->role==OUTPUT && layer->dim <=2 && anndef->outfunc==CLASSIFICATION){
+	layer->actfuncKind = actfunLists[i];
+
+	//for binary classification
+	if (layer->role==OUTPUT && layer->dim == 2 && anndef->target==CLASSIFICATION){
 		layer->dim = 1; 
 	}
-	numOfElems = (layer->dim) *(layer->srcDim);
+	//initialise weights and biases: W is node by feadim Matrix 
+	numOfElems = (layer->dim) * (layer->srcDim);
 	layer-> weights = malloc(sizeof(double)*numOfElems);
 	assert(layer->weights!=NULL);
-	initialiseWeights(layer->weights,numOfElems,layer->srcDim);
+	initialiseWeights(layer->weights,layer->dim,layer->srcDim);
 	
 	layer->bias = malloc(sizeof(double)*(layer->dim));
 	assert(layer->bias!=NULL);
 	initialiseBias(layer->bias,layer->dim, layer->srcDim);
-
-	layer->feaElem = (FELink)malloc(sizeof(FeaElem));
-	assert(layer->feaElem!=NULL);
-	initialiseFeaElem(layer->feaElem,layer->src->feaElem);
-	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim));
-
 	
-	layer->errElem = NULL;
-}
-
-void initialiseInputLayer(LELink layer){
-	layer->id = 0;
-	layer->dim = inputDim;
-	layer->actfuncKind = IDENTITY;
-	layer->src = NULL;
-	layer->weights = NULL;
-	layer->bias = NULL;
-	layer->role = INPUT;
-	layer->errElem = NULL;
-	
+	//initialise feaElems
 	layer->feaElem = (FELink) malloc(sizeof(FeaElem));
 	assert(layer->feaElem!=NULL);
-	layer->feaElem->xfeatMat= NULL;
-	layer->feaElem->yfeatMat = malloc (sizeof(double)*inputDim);//this line may need to be changed later
-	assert(layer->feaElem->yfeatMat!=NULL);
-}	
+	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
+	layer->feaElem->xfeatMat = (srcLayer != NULL) ? srcLayer->feaElem->yfeatMat : NULL;
+
+	//intialise traininfo
+	layer->info = (TRLink) malloc(sizeof(TrainInfo));
+	layer->info->dwFeatMat = malloc(sizeof(double)*numOfElems);
+	layer->info->dbFeaMat = malloc(sizeof(double)*layer->dim);
+
+}
 
 void  initialiseANN(){
 	int i;
 	anndef = malloc(sizeof(ANNDef));
 	assert(anndef!=NULL);
 	
-	anndef->outfunc = outputfunc;
+	anndef->target = target;
 	anndef->layerNum = numLayers;
-	anndef->layerList = malloc (sizeof(LELink)*numLayers);
+	anndef->layerList = (LELink *) malloc (sizeof(LELink)*numLayers);
 	assert(anndef->layerList!=NULL);
+	/*initialise the seed only once then initialise weights and bias*/
+	srand((unsigned int)time(NULL));
+	//initilaise layers
 	for(i = 0; i<anndef->layerNum; i++){
+		anndef->layerList[i] = (LELink) malloc (sizeof(LayerElem));
+		assert (anndef->layerList[i]!=NULL);
+		printf("layer %d \n",i);
 		if (i == 0 ){
-			anndef->layerList[i] = malloc (sizeof(LayerElem));
-			assert (anndef->layerList[i]!=NULL);
-			initialiseInputLayer(anndef->layerList[i]);
-			
+			initialiseLayer(anndef->layerList[i],i, NULL);
 		}else{
-			anndef->layerList[i] = (LELink) malloc (sizeof(LayerElem));
-			assert(anndef->layerList[i]!=NULL);
 			initialiseLayer(anndef->layerList[i],i, anndef->layerList[i-1]);
+			if(anndef->layerList[i]->role == OUTPUT) anndef->layerList[i]->info->labelMat = anndef->labelMat;
 		}	
 	}
-	
+
+	anndef->errorfunc = errfunc;
+	//initialise ErrElems of layers for back-propagation
+	initialiseErrElems(anndef);
 }
 //----------------------------------------------------------------------------------------------
+/*this section of the code deals with forward propgation of a deep neural net **/
+
 double computeTanh(double x){
 	return 2*(computeSigmoid(2*x))-1;
 }
-
 double computeSigmoid(double x){
 	double result;
 	result = 1/(1+ exp(-1*x));
 	return result;
 }
-
+/*computing non-linear activation*/
 void computeActOfLayer(LELink layer){
 	int i ;
 	double sum;
@@ -149,12 +169,12 @@ void computeActOfLayer(LELink layer){
 		case HIDDEN:
 			switch(layer->actfuncKind){
 				case SIGMOID:
-				for (i = 0;i < layer->dim;i++){
+				for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
 					layer->feaElem->yfeatMat[i] = computeSigmoid(layer->feaElem->yfeatMat[i]);
 				}
 				break;
 			case TANH:
-				for(i = 0; i< layer->dim; i++){
+				for(i = 0; i< layer->dim*BATCHSAMPLES; i++){
 					layer->feaElem->yfeatMat[i] = computeTanh(layer->feaElem->yfeatMat[i]);
 				}
 				break;	
@@ -163,54 +183,60 @@ void computeActOfLayer(LELink layer){
 			}
 			break;
 		case OUTPUT:
-			if (layer->dim<=2){
-				/*logistic regression*/
-				for (i = 0;i < layer->dim;i++){
-					layer->feaElem->yfeatMat[i] = computeSigmoid(layer->feaElem->yfeatMat[i]);
-				}
-			}else{
-				for (i = 0;i < layer->dim;i++){
-					layer->feaElem->yfeatMat[i] = exp(layer->feaElem->yfeatMat[i]);
-					sum+=layer->feaElem->yfeatMat[i];
-				}
-				for (i = 0;i < layer->dim;i++){
-					layer->feaElem->yfeatMat[i] =layer->feaElem->yfeatMat[i]/sum;
-				}
-				
+			switch(layer->actfuncKind){
+				case SIGMOID:
+					if (layer->dim==1){
+					/*logistic regression now yfeatmmat is now an array where of one output activation per sample*/
+						for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
+							layer->feaElem->yfeatMat[i] = computeSigmoid(layer->feaElem->yfeatMat[i]);
+						}
+					}else{
+						printf("ERROR to perform binary classification,the number of non-zero output nodes must be <=2");
+						exit(0);
+					}
+					break;	
+				case SOFTMAX:
+				//softmax activation
+					for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
+						layer->feaElem->yfeatMat[i] = exp(layer->feaElem->yfeatMat[i]);
+						sum+=layer->feaElem->yfeatMat[i];
+					}
+					for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
+						layer->feaElem->yfeatMat[i] =layer->feaElem->yfeatMat[i]/sum;
+					}	
+					break;
+				default:
+					break;	
 			}
-			break;
 		default:
 			break;
 	}
 	
 }
-
+/* Yfeat is batchSamples by nodeNum matrix(stored as row major)  = X^T(row-major)-batch samples by feaMat * W^T(column major) -feaMat By nodeNum */
 void computeLinearActivation(LELink layer){
-	if (layer->dim > 1){
-		/* y = a W*x + By- Here B=0 and a =1*/
-		cblas_dgemv(CblasRowMajor,CblasNoTrans,layer->dim,layer->srcDim,1,layer->weights,layer->srcDim,layer->feaElem->xfeatMat,1,0,layer->feaElem->yfeatMat,1);
-		/*y = y+ b- adding the bias*/
-		cblas_daxpy(layer->dim,1,layer->bias,1,layer->feaElem->yfeatMat,1);
-	}else{
-		layer->feaElem->yfeatMat[0] = cblas_ddot(layer->src->dim,layer->weights,1,layer->feaElem->xfeatMat,1);
-		layer->feaElem->yfeatMat[0] = layer->feaElem->yfeatMat[0]+layer->bias[0];
-	}	
-}
+	int i,off;
+	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
+		 cblas_dcopy(layer->dim, layer->bias, 1, layer->feaElem->yfeatMat + off, 1);
+	}
+	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 1, layer->feaElem->yfeatMat, layer->dim);
+}   
 
+/*forward pass*/
 void fwdPassOfANN(){
 	LELink layer;
 	int i;
-	switch(anndef->outfunc){
+	switch(anndef->target){
 			case REGRESSION:
-				for (i = 1; i< anndef->layerNum;i++){
+				for (i = 0; i< anndef->layerNum-1;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
 					computeActOfLayer(layer);
-					
 				}
+				computeLinearActivation(anndef->layerList[anndef->layerNum-1]);
 				break;
 			case CLASSIFICATION:
-				for (i = 1; i< anndef->layerNum;i++){
+				for (i = 0; i< anndef->layerNum;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
 					computeActOfLayer(layer);
@@ -218,6 +244,126 @@ void fwdPassOfANN(){
 				break;	
 	}
 }
+//----------------------------------------------------------------------------------=
+/*This section of the code implements the back-propation algorithm  to compute the error derivatives*/
+void computeDrvAct(double *dyfeat , double *yfeat,int len){
+	//CPU Version
+	int i;
+	printf("\n dE/da for layer  \n");
+	for (i = 0; i< len;i++){
+		dyfeat[i] = dyfeat[i]*yfeat[i];
+		printf("%lf",dyfeat[i] );
+	}
+}
+
+void computeActivationDrv (LELink layer){
+	int i;
+	switch (layer->actfuncKind){
+		case SIGMOID:
+			//CPU verion
+		   printf("dz/da for layer %d \n",layer->id);
+			for (i = 0; i<layer->dim*BATCHSAMPLES;i++){
+				layer->feaElem->yfeatMat[i] = layer->feaElem->yfeatMat[i]*(1-layer->feaElem->yfeatMat[i]);
+				printf("%lf",layer->feaElem->yfeatMat[i] );
+			}
+		default:
+			break;	
+	}
+}
+
+void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples){
+	int i;
+	double* ones = malloc (sizeof(double)*batchsamples);
+	for (i = 0; i<batchsamples;i++){
+		ones[i] = 1;
+	}
+	//multiply node by batchsamples with batchsamples by 1
+	cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
+}
+
+void subtractMatrix(double *dyfeat, double* labels, int dim){
+	int i;
+	printf("dE/da at the output node \n");
+	for (i = 0; i<dim;i++){
+		dyfeat[i] = dyfeat[i]-labels[i];
+		printf("%lf ", dyfeat[i]);
+		
+	}
+	printf("\n");
+}
+
+void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc ){
+	switch(errorfunc){
+		case (XENT):
+			switch(layer->actfuncKind){
+				case SIGMOID:
+					subtractMatrix(layer->errElem->dyFeatMat,layer->info->labelMat,layer->dim*BATCHSAMPLES);
+				break;
+
+				case SOFTMAX:
+					subtractMatrix(layer->errElem->dyFeatMat,layer->info->labelMat,layer->dim*BATCHSAMPLES);
+				break;
+
+				case TANH:
+				break;
+
+				case IDENTITY:
+				break;
+			}
+		default:
+		break	;
+	}
+}
+
+void BackPropBatch(ADLink anndef){
+	int i,c,j,k;
+	LELink layer;
+	for (i = (anndef->layerNum-1); i>=0;--i){
+		layer = anndef->layerList[i];
+		if (layer->role ==OUTPUT){
+			layer->errElem->dyFeatMat = layer->feaElem->yfeatMat;
+			CalcOutLayerBackwardSignal(layer,anndef->errorfunc);
+		}else{
+			// from previous iteration dxfeat that is dyfeat now is dE/dZ.. computing dE/da
+			computeActivationDrv(layer); 
+			computeDrvAct(layer->errElem->dyFeatMat,layer->feaElem->yfeatMat,layer->dim*BATCHSAMPLES); 
+
+		}
+		//compute dxfeatMat: the result  should be an array [ b1 b2..] where b1 is one of dim srcDim
+		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, layer->srcDim, BATCHSAMPLES, layer->dim, 1, layer->weights, layer->srcDim, layer->errElem->dyFeatMat, BATCHSAMPLES, 0,layer->errElem->dxFeatMat,layer->srcDim);
+		//compute derivative with respect to weights: the result  should be an array of array of [ n1 n2] where n1 is of length srcDim
+		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, layer->srcDim, layer->dim, BATCHSAMPLES, 1, layer->feaElem->xfeatMat, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0, layer->info->dwFeatMat, layer->srcDim);
+		//compute derivative with respect to bias: the result should an array of size layer->dim ..we just sum the columns of dyFeatMat
+		sumColsOfMatrix(layer->errElem->dyFeatMat,layer->info->dbFeaMat,layer->dim,BATCHSAMPLES);
+
+		c = 0;
+		for (j = 0; j< layer->dim ;j++){
+			printf("\n de/dw for node %d\n ",j);
+			for (k = 0; k <layer->srcDim;k++){
+				printf(" %lf ",layer->info->dwFeatMat[c]);
+				c++;
+			}
+
+		}
+		printf( "\n bias is ");
+		for (j = 0; j< layer->dim ;j++){
+			printf(" %f ", layer->info->dbFeaMat[j]);
+		}
+
+		printf("\n dE/dx for layer %d \n",layer->id);
+		for (j = 0; j< layer->srcDim*BATCHSAMPLES;i++){
+			printf("%lf",layer->errElem->dxFeatMat[j]);
+		}
+
+
+
+
+	}
+}
+
+
+
+
 //========================================================================================================
 void freeMemory(){
 	int i;
@@ -228,8 +374,24 @@ void freeMemory(){
 					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
 						free (anndef->layerList[i]->feaElem->yfeatMat);
 					}
+					if (i==0) free (anndef->layerList[i]->feaElem->xfeatMat);
 					free(anndef->layerList[i]->feaElem);
 				}
+				if (anndef->layerList[i]->errElem !=NULL){
+					if (anndef->layerList[i]->errElem->dxFeatMat != NULL){
+						free (anndef->layerList[i]->errElem->dxFeatMat);
+					}
+					if (i==(anndef->layerNum-1)){
+						free (anndef->layerList[i]->errElem->dyFeatMat);
+					}
+					free(anndef->layerList[i]->errElem);
+				}
+				if (anndef->layerList[i]->info!=NULL){
+					free (anndef->layerList[i]->info->dwFeatMat);
+					free (anndef->layerList[i]->info->dbFeaMat);
+					free (anndef->layerList[i]->info);
+				}
+
 				if (anndef->layerList[i]->weights !=NULL){
 					free (anndef->layerList[i]->weights);
 				}
@@ -248,7 +410,8 @@ void freeMemory(){
 //=================================================================================
 
 int main(){
-	int i;
+	int i,j,k,c,off;
+	LELink layer;
 	/*testing forward pass of ANN*
 	
 	Test 1 : with single input 
@@ -257,50 +420,96 @@ int main(){
 	output layer dim =1, the output of ANN is regression
 	*/
 	//initialise
-	ActFunKind list[] = {SIGMOID,SIGMOID};
+	ActFunKind list[] = {SIGMOID};
 	actfunLists = list;
-	int arr[] ={10,6,5};
+	targetDim = 2;
+	int arr[] ={2};
 	hidUnitsPerLayer = arr;
-	numLayers = 4; ;
+	numLayers = 2; ;
 	inputDim = 2;
-	outputfunc = CLASSIFICATION;
+	target = CLASSIFICATION;
+	double lab[] ={0,1};
+	anndef->labelMat =lab;
 	
+	printf("before initialisation \n");
+
 	initialiseANN();
+	printf("initialisation successful \n");
+	double input[] ={1,1,2,2};
 
-	anndef->layerList[0]->feaElem->yfeatMat[0] = 1;
-	anndef->layerList[0]->feaElem->yfeatMat[1] = 1;
-
-	/** printing the output of the hidden and output units **/
+	anndef->layerList[0]->feaElem->xfeatMat = input;
+	anndef->layerList[0]->srcDim = 2;
+	
+	printf("before forward pass \n");
 	fwdPassOfANN();
-
-	/** printin out the weights and bias of the hidden layer**/
-	printf("1st check %d\n",(anndef->layerList[0]->dim*anndef->layerList[1]->dim));
-	printf("2nd check %d\n",(anndef->layerList[0]->dim -1));
-	for (i = 0; i < (anndef->layerList[0]->dim*anndef->layerList[1]->dim);i+=(anndef->layerList[0]->dim )){
-		printf("the weights to  hidden unit is %f  %f \n ",anndef->layerList[1]->weights[i],anndef->layerList[1]->weights[i+1]);
-
-	}
-	printf("the bias to the first hidden layer is %f %f %f \n",anndef->layerList[1]->bias[0],anndef->layerList[1]->bias[1],anndef->layerList[1]->bias[2]);
+	printf("forward pass successful \n");
 	
-	/**printing out the outputs of the hidden layer*/
-	for (i =0 ; i <anndef->layerList[1]->dim;i+=anndef->layerList[1]->dim){
-		printf("the outputs of the  hidden units is %f ,%f, %f \n\n",anndef->layerList[1]->feaElem->yfeatMat[i],anndef->layerList[1]->feaElem->yfeatMat[i+1],anndef->layerList[1]->feaElem->yfeatMat[i+2]);
+	//Tests to check forward pass
+	/**1st check printin out the weights and bias of the hidden layer **/
+	
+	for (i = 0; i <numLayers;i++){
+		layer = anndef->layerList[i];
+		printf( "Layer %d ",i);
+		c = 0;
+		for (j = 0; j< layer->dim ;j++){
+			printf("\n weights for node %d\n ",j);
+			for (k = 0; k <layer->srcDim;k++){
+				printf("weight is %lf  ",layer->weights[c]);
+				c++;
+			}
+
+		}
+		printf( "\n bias is ");
+		for (j = 0; j< layer->dim ;j++){
+			printf(" %f ", layer->bias[j]);
+		}
+		
+	}
+
+	/// printing the output of layers
+	for (i = 0; i<numLayers;i++){
+		layer = anndef->layerList[i];
+		printf("\noutput for layer %d\n",i);
+		c = 0;
+		for (j = 0; j <BATCHSAMPLES;j++){
+			printf("\nbatch sample %d\n",j);
+			for (k = 0; k<layer->dim;k++){
+				printf("%f ",layer->feaElem->yfeatMat[c]);
+				c ++;
+			}
+		}
+	}
+
+	//testing matrix multiplication//
+	double bias[] = { 3.0 , 2.5};
+	double yfeatmmat[] ={0,0,0,0};
+	double weights[] ={3 ,1, 2, 4 };
+	double xfeatMat[] ={ 1 ,1, 2 ,2 };
+
+	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += 2){
+		 cblas_dcopy(2, bias, 1, yfeatmmat + off, 1);
+	}
+	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, 2, 2, 2, 1, weights, 2, xfeatMat, 2, 1, yfeatmmat, 2);
+	c = 0;
+	double zfeatmmat[] ={0.621085,-0.600244,1.655725,-1.925527};
+	for (j = 0; j <BATCHSAMPLES;j++){
+		printf("\n NN batch sample %d\n",j);
+		for (k = 0; k<2;k++){
+			printf("%f ",(yfeatmmat[c]));
+			c++;
+		}
 	}	
-
-	/**printing out the weights and bias associated with the output layer **/
-	for (i = 0; i < anndef->layerList[3]->dim*anndef->layerList[2]->dim;i+=anndef->layerList[2]->dim){
-	printf ( "the weights to the output is %f,%f,%f \n",anndef->layerList[3]->weights[i],anndef->layerList[3]->weights[i+1],anndef->layerList[3]->weights[i+2]);
-	}
 	
-	for (i =0 ;i<anndef->layerList[3]->dim;i++){
-	printf ("the bias to the final output is  %f \n ",anndef->layerList[3]->bias[0]);
-	printf("The output of ANN is %f\n",anndef->layerList[3]->feaElem->yfeatMat[i]);
-	}
+	//tests to check back-propagation algorithm
 
 
 
+ 	
 
-	freeMemory();
+		
+
+
+freeMemory();
 
 	
 
