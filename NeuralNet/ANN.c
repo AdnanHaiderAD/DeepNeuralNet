@@ -10,11 +10,20 @@
 #define M_PI 3.14159265358979323846
 #endif
 #ifndef BATCHSAMPLES
-#define BATCHSAMPLES 2
+#define BATCHSAMPLES 1
 #endif
 #ifdef CBLAS
 #include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
 #endif
+
+
+/*configurations for adapting parameters*/
+static double learningrate;
+static double weightdecay;
+static double momentum;
+static int  maxEpochNum;
+static double minLR;
+
 
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
@@ -125,6 +134,11 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	layer->info->dwFeatMat = malloc(sizeof(double)*numOfElems);
 	layer->info->dbFeaMat = malloc(sizeof(double)*layer->dim);
 
+	if (momentum > 0) {
+		layer->updateWeightMat = malloc(sizeof(double)*numOfElems);
+		layer->updateBiasMat = malloc(sizeof(double)*(layer->dim));
+	}
+		
 }
 
 void  initialiseANN(){
@@ -384,13 +398,77 @@ void BackPropBatch(ADLink anndef){
 		for (j = 0; j< layer->srcDim*BATCHSAMPLES;j++){
 			printf("%lf ",layer->errElem->dxFeatMat[j]);
 		}
-		
-
-
-
 	}
 }
+//-------------------------------------------------------------------------------------------
+/*This section deals with running schedulers to iteratively update the parameters of the neural net**/
+void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim){
+	//blas routine
+	#ifdef CBLAS
+		cblas_daxpy(dim,1,weightMat,1,dwFeatMat,1);
+	#else
+		int i;
+		for (i =0;i<dim;i++){
+			dwFeatMat[i] = dwFeatMat[i] + weightMat[i];
+		}
+	#endif	
+}
 
+void scaleMatrixOrVec(double* weightMat, double learningrate,int dim){
+	//blas routine
+	#ifdef CBLAS
+		cblas_dscal(dim,learningrate,weightMat,1);
+	#else
+		int i;
+		for (i =0;i<dim;i++){
+			weightMat[i] = weightMat[i]*learningrate;	
+		}
+	#endif	
+}
+void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay){
+	int i;
+	LELink layer;
+	for (i =(anndef->layerNum-1) ; i >=0; --i){
+		layer = anndef->layerList[i];
+		//if we have a regularised error function: R_E = Er+ b * 1/2 w^w then dR_E = dEr + bw where b is weight decay parameter
+		if (weightdecay > 0){
+			scaleMatrixOrVec(layer->weights,weightdecay,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->bias,weightdecay,layer->dim);
+			addMatrixOrVec(layer->weights,layer->info->dwFeatMat,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->bias,layer->info->dbFeaMat,layer->dim);
+		}
+		if (lrnrate > 0){
+			scaleMatrixOrVec(layer->info->dwFeatMat,lrnrate,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->info->dbFeaMat,lrnrate,layer->dim);
+		}
+		if (momentum > 0){
+			scaleMatrixOrVec(layer->updateWeightMat,momentum,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->updateBiasMat,momentum,layer->dim);
+			
+			addMatrixOrVec(layer->info->dwFeatMat,layer->updateWeightMat,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->info->dbFeaMat,layer->updateBiasMat,layer->dim);
+
+			//updating parameters: first we need to descale the lambda from weights and bias
+			scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
+
+			addMatrixOrVec(layer->updateWeightMat,layer->weights,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->updateBiasMat,layer->bias,layer->dim);
+		}else{
+			//updating parameters: first we need to descale the lambda from weights and bias
+			scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
+
+			addMatrixOrVec(layer->info->dwFeatMat,layer->weights,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->info->dbFeaMat,layer->bias,layer->dim);
+		}
+	}
+
+}
+
+
+
+	
 
 
 
@@ -419,12 +497,17 @@ void freeMemoryfromANN(){
 					free (anndef->layerList[i]->info->dbFeaMat);
 					free (anndef->layerList[i]->info);
 				}
-
 				if (anndef->layerList[i]->weights !=NULL){
 					free (anndef->layerList[i]->weights);
 				}
 				if (anndef->layerList[i]->bias !=NULL){
 					free (anndef->layerList[i]->bias);
+				}
+				if(anndef->layerList[i]->updateBiasMat !=NULL){
+					free(anndef->layerList[i]->updateBiasMat);
+				}
+				if (anndef->layerList[i]->updateWeightMat!= NULL){
+					free(anndef->layerList[i]->updateWeightMat);
 				}
 				free (anndef->layerList[i]);
 			}
@@ -435,16 +518,11 @@ void freeMemoryfromANN(){
 	printf("Finished freeing memory\n");	
 }
 
-//=================================================================================
-
-int main(){
-
+/*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
+void unitTests(){
 	int i,j,k,c,off;
 	LELink layer;
 	/*testing forward pass of ANN*
-	
-	Test 1 : with single input 
-
 	The structure of ANN is 3 layers : input layer dim =2, hidden layer dim =3, 
 	output layer dim =1, the output of ANN is regression
 	*/
@@ -457,13 +535,13 @@ int main(){
 	numLayers = 2; ;
 	inputDim = 2;
 	target = CLASSIFICATION;
-	double lab[] ={0,1};
+	double lab[] ={0};
 	labels = lab;
 	printf("before initialisation \n");
 
 	initialiseANN();
 	printf("initialisation successful \n");
-	double input[] ={1,1,2,2};
+	double input[] ={1,1};
 
 	anndef->layerList[0]->feaElem->xfeatMat = input;
 	anndef->layerList[0]->srcDim = 2;
@@ -471,10 +549,9 @@ int main(){
 	printf("before forward pass \n");
 	fwdPassOfANN();
 	printf("forward pass successful \n");
-	
+	//------------------------------------------------------------------------------
 	//Tests to check forward pass
 	/**1st check printin out the weights and bias of the hidden layer **/
-	
 	for (i = 0; i <numLayers;i++){
 		layer = anndef->layerList[i];
 		printf( "\nLayer %d ",i);
@@ -493,7 +570,6 @@ int main(){
 		}
 		
 	}
-
 	/// printing the output of layers
 	for (i = 0; i<numLayers;i++){
 		layer = anndef->layerList[i];
@@ -507,33 +583,35 @@ int main(){
 			}
 		}
 	}
-
-	//testing matrix multiplication//
-	double bias[] = { 3.0 , 2.5};
-	double yfeatmmat[] ={0,0,0,0};
-	double weights[] ={3 ,1, 2, 4 };
-	double xfeatMat[] ={ 1 ,1, 2 ,2 };
-	#ifdef CBLAS
-	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += 2){
-		 cblas_dcopy(2, bias, 1, yfeatmmat + off, 1);
-	}
-	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, 2, 2, 2, 1, weights, 2, xfeatMat, 2, 1, yfeatmmat, 2);
-	#endif
-	c = 0;
-	double zfeatmmat[] ={0.621085,-0.600244,1.655725,-1.925527};
-	for (j = 0; j <BATCHSAMPLES;j++){
-		printf("\n NN batch sample %d\n",j);
-		for (k = 0; k<2;k++){
-			printf("%f ",(yfeatmmat[c]));
-			c++;
-		}
-	}	
+	//---------------------------------------------------------------------------------------------------------
+	/**Comparing backpropagation with symmetrical central differences to check the correctness of the implementation*/
+	//Note Run the back-propagation in an on line way that compute the derivative for  a single sample
+	double weight_value;
+	double biasV;
+	weight_value = anndef->layerList[0]->weights[1];
+	biasV = anndef->layerList[0]->bias[0];
+	anndef->layerList[0]->weights[1]=anndef->layerList[0]->weights[1]+0.0000000001;
+	fwdPassOfANN();
+	double errorB0 = anndef->layerList[1]->feaElem->yfeatMat[0];
 	
+	anndef->layerList[0]->weights[1]=anndef->layerList[0]->weights[1]-0.0000000002;
+	fwdPassOfANN();
+	double errorB20 = anndef->layerList[1]->feaElem->yfeatMat[0];
+	
+	anndef->layerList[0]->weights[1] = weight_value;
+	fwdPassOfANN();
+
 	//testing Back-propagation
 	BackPropBatch(anndef);
+	printf("\ngradient check  %lf \n",(errorB0-errorB20)/(0.0000000002) );
 
-	//tests to check back-propagation algorithm
 	freeMemoryfromANN();
 
+}
+
+//=================================================================================
+
+int main(){
+	unitTests();
 }
 

@@ -35,6 +35,8 @@ typedef struct _LayerElem{
 	int srcDim; /* the number of units in the input layer */
 	double *weights;/* the weight matrix of the layer should number of nodes by input dim*/
 	double *bias; /* the bias vector */
+	double *updateWeightMat; /* stores the velocity in the weight space*/
+	double *updateBiasMat;
 	FELink feaElem; /* stores the  input activations coming into the layer as well the output activations going out from the layer */
 	ERLink errElem;
 	TRLink info;
@@ -71,4 +73,4 @@ void subtractMatrix(double *dyfeat, double* labels, int dim);
 void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc );
 void BackPropBatch(ADLink anndef);
 
-void freeMemory();
+void freeMemoryfromANN();
