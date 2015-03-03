@@ -5,12 +5,15 @@
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>
-#include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 #ifndef BATCHSAMPLES
 #define BATCHSAMPLES 2
+#endif
+#ifdef CBLAS
+#include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
 #endif
 
 static ActFunKind *actfunLists;
@@ -18,9 +21,11 @@ static int *hidUnitsPerLayer;
 static int numLayers;
 static int inputDim;
 static int targetDim;
+static double *labels;
 static OutFuncKind target;
 static ObjFuncKind errfunc;
 static ADLink anndef;
+
 
 //--------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
@@ -129,6 +134,7 @@ void  initialiseANN(){
 	
 	anndef->target = target;
 	anndef->layerNum = numLayers;
+	anndef->labelMat = labels;
 	anndef->layerList = (LELink *) malloc (sizeof(LELink)*numLayers);
 	assert(anndef->layerList!=NULL);
 	/*initialise the seed only once then initialise weights and bias*/
@@ -215,11 +221,13 @@ void computeActOfLayer(LELink layer){
 }
 /* Yfeat is batchSamples by nodeNum matrix(stored as row major)  = X^T(row-major)-batch samples by feaMat * W^T(column major) -feaMat By nodeNum */
 void computeLinearActivation(LELink layer){
-	int i,off;
-	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
-		 cblas_dcopy(layer->dim, layer->bias, 1, layer->feaElem->yfeatMat + off, 1);
-	}
-	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 1, layer->feaElem->yfeatMat, layer->dim);
+	#ifdef CBLAS
+		int i,off;
+		for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
+			 cblas_dcopy(layer->dim, layer->bias, 1, layer->feaElem->yfeatMat + off, 1);
+		}
+		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 1, layer->feaElem->yfeatMat, layer->dim);
+	#endif
 }   
 
 /*forward pass*/
@@ -252,7 +260,7 @@ void computeDrvAct(double *dyfeat , double *yfeat,int len){
 	printf("\n dE/da for layer  \n");
 	for (i = 0; i< len;i++){
 		dyfeat[i] = dyfeat[i]*yfeat[i];
-		printf("%lf",dyfeat[i] );
+		printf("%lf ",dyfeat[i] );
 	}
 }
 
@@ -264,7 +272,7 @@ void computeActivationDrv (LELink layer){
 		   printf("dz/da for layer %d \n",layer->id);
 			for (i = 0; i<layer->dim*BATCHSAMPLES;i++){
 				layer->feaElem->yfeatMat[i] = layer->feaElem->yfeatMat[i]*(1-layer->feaElem->yfeatMat[i]);
-				printf("%lf",layer->feaElem->yfeatMat[i] );
+				printf("%lf ",layer->feaElem->yfeatMat[i] );
 			}
 		default:
 			break;	
@@ -272,24 +280,37 @@ void computeActivationDrv (LELink layer){
 }
 
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples){
-	int i;
-	double* ones = malloc (sizeof(double)*batchsamples);
-	for (i = 0; i<batchsamples;i++){
-		ones[i] = 1;
-	}
-	//multiply node by batchsamples with batchsamples by 1
-	cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
+	#ifdef CBLAS
+		int i;
+		double* ones = malloc (sizeof(double)*batchsamples);
+		for (i = 0; i<batchsamples;i++){
+			ones[i] = 1;
+		}
+		//multiply node by batchsamples with batchsamples by 1
+		cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
+	#endif
 }
 
 void subtractMatrix(double *dyfeat, double* labels, int dim){
-	int i;
-	printf("dE/da at the output node \n");
-	for (i = 0; i<dim;i++){
-		dyfeat[i] = dyfeat[i]-labels[i];
-		printf("%lf ", dyfeat[i]);
-		
-	}
-	printf("\n");
+	//blas routine
+	#ifdef CBLAS
+		cblas_daxpy(dim,-1,labels,1,dyfeat,1);
+		int i;
+		for (i = 0; i<dim;i++){
+			printf("%lf ", dyfeat[i]);
+		}
+		printf("\n");
+
+	#else
+	//CPU version
+		int i;
+		//printf("dE/da at the output node \n");
+		for (i = 0; i<dim;i++){
+			dyfeat[i] = dyfeat[i]-labels[i];
+			//printf("%lf ", dyfeat[i]);
+		}
+	//	printf("\n");
+	#endif
 }
 
 void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc ){
@@ -318,7 +339,8 @@ void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc ){
 void BackPropBatch(ADLink anndef){
 	int i,c,j,k;
 	LELink layer;
-	for (i = (anndef->layerNum-1); i>=0;--i){
+	for (i = (anndef->layerNum-1); i>=0;i--){
+		printf("\nlayer number %d\n",i);
 		layer = anndef->layerList[i];
 		if (layer->role ==OUTPUT){
 			layer->errElem->dyFeatMat = layer->feaElem->yfeatMat;
@@ -329,14 +351,22 @@ void BackPropBatch(ADLink anndef){
 			computeDrvAct(layer->errElem->dyFeatMat,layer->feaElem->yfeatMat,layer->dim*BATCHSAMPLES); 
 
 		}
+		#ifdef CBLAS
 		//compute dxfeatMat: the result  should be an array [ b1 b2..] where b1 is one of dim srcDim
-		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, layer->srcDim, BATCHSAMPLES, layer->dim, 1, layer->weights, layer->srcDim, layer->errElem->dyFeatMat, BATCHSAMPLES, 0,layer->errElem->dxFeatMat,layer->srcDim);
+		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, layer->srcDim, BATCHSAMPLES, layer->dim, 1, layer->weights, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0,layer->errElem->dxFeatMat,layer->srcDim);
 		//compute derivative with respect to weights: the result  should be an array of array of [ n1 n2] where n1 is of length srcDim
 		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, layer->srcDim, layer->dim, BATCHSAMPLES, 1, layer->feaElem->xfeatMat, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0, layer->info->dwFeatMat, layer->srcDim);
 		//compute derivative with respect to bias: the result should an array of size layer->dim ..we just sum the columns of dyFeatMat
 		sumColsOfMatrix(layer->errElem->dyFeatMat,layer->info->dbFeaMat,layer->dim,BATCHSAMPLES);
+		#endif
 
 		c = 0;
+
+		printf("\n xfeat for layer %d \n",layer->id);
+		for (j = 0; j< layer->srcDim*BATCHSAMPLES;j++){
+			printf("%lf ",layer->feaElem->xfeatMat[j]);
+		}
+
 		for (j = 0; j< layer->dim ;j++){
 			printf("\n de/dw for node %d\n ",j);
 			for (k = 0; k <layer->srcDim;k++){
@@ -351,10 +381,10 @@ void BackPropBatch(ADLink anndef){
 		}
 
 		printf("\n dE/dx for layer %d \n",layer->id);
-		for (j = 0; j< layer->srcDim*BATCHSAMPLES;i++){
-			printf("%lf",layer->errElem->dxFeatMat[j]);
+		for (j = 0; j< layer->srcDim*BATCHSAMPLES;j++){
+			printf("%lf ",layer->errElem->dxFeatMat[j]);
 		}
-
+		
 
 
 
@@ -365,8 +395,10 @@ void BackPropBatch(ADLink anndef){
 
 
 //========================================================================================================
-void freeMemory(){
+//Note : In the current architecture, I dont specially allocate memory to the ANN to hold labels and input
+void freeMemoryfromANN(){
 	int i;
+	printf("Start freeing memory\n");
 	if (anndef != NULL){
 		for (i = 0;i<numLayers;i++){
 			if (anndef->layerList[i] !=NULL){
@@ -374,15 +406,11 @@ void freeMemory(){
 					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
 						free (anndef->layerList[i]->feaElem->yfeatMat);
 					}
-					if (i==0) free (anndef->layerList[i]->feaElem->xfeatMat);
 					free(anndef->layerList[i]->feaElem);
 				}
 				if (anndef->layerList[i]->errElem !=NULL){
 					if (anndef->layerList[i]->errElem->dxFeatMat != NULL){
 						free (anndef->layerList[i]->errElem->dxFeatMat);
-					}
-					if (i==(anndef->layerNum-1)){
-						free (anndef->layerList[i]->errElem->dyFeatMat);
 					}
 					free(anndef->layerList[i]->errElem);
 				}
@@ -403,13 +431,14 @@ void freeMemory(){
 		}
 		free(anndef->layerList);	
 		free(anndef);
-		
-	}	
+	}
+	printf("Finished freeing memory\n");	
 }
 
 //=================================================================================
 
 int main(){
+
 	int i,j,k,c,off;
 	LELink layer;
 	/*testing forward pass of ANN*
@@ -429,8 +458,7 @@ int main(){
 	inputDim = 2;
 	target = CLASSIFICATION;
 	double lab[] ={0,1};
-	anndef->labelMat =lab;
-	
+	labels = lab;
 	printf("before initialisation \n");
 
 	initialiseANN();
@@ -449,7 +477,7 @@ int main(){
 	
 	for (i = 0; i <numLayers;i++){
 		layer = anndef->layerList[i];
-		printf( "Layer %d ",i);
+		printf( "\nLayer %d ",i);
 		c = 0;
 		for (j = 0; j< layer->dim ;j++){
 			printf("\n weights for node %d\n ",j);
@@ -485,11 +513,12 @@ int main(){
 	double yfeatmmat[] ={0,0,0,0};
 	double weights[] ={3 ,1, 2, 4 };
 	double xfeatMat[] ={ 1 ,1, 2 ,2 };
-
+	#ifdef CBLAS
 	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += 2){
 		 cblas_dcopy(2, bias, 1, yfeatmmat + off, 1);
 	}
 	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, 2, 2, 2, 1, weights, 2, xfeatMat, 2, 1, yfeatmmat, 2);
+	#endif
 	c = 0;
 	double zfeatmmat[] ={0.621085,-0.600244,1.655725,-1.925527};
 	for (j = 0; j <BATCHSAMPLES;j++){
@@ -500,21 +529,11 @@ int main(){
 		}
 	}	
 	
+	//testing Back-propagation
+	BackPropBatch(anndef);
+
 	//tests to check back-propagation algorithm
-
-
-
- 	
-
-		
-
-
-freeMemory();
-
-	
-
-
-
+	freeMemoryfromANN();
 
 }
 
