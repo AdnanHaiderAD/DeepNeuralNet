@@ -1,5 +1,5 @@
 
-typedef enum {TRUE, FALSE} Boolean;
+typedef enum {FALSE, TRUE} Boolean;
 typedef enum {XENT, SSE} ObjFuncKind;
 typedef enum {REGRESSION, CLASSIFICATION} OutFuncKind;
 typedef enum {HIDDEN,INPUT,OUTPUT} LayerRole;
@@ -17,11 +17,13 @@ typedef struct _MSI *MSLink;
 typedef struct _MSI{
 double crtVal;
 double prevCrtVal;
-}MSI
+}MSI;
 
 typedef struct _TrainInfo{
-	double *dwFeatMat;
-	double *dbFeaMat;
+	double *dwFeatMat; /* dE/dw matrix*/
+	double *dbFeaMat; /* dE/db  vector */
+	double *updateWeightMat; /* stores the velocity in the weight space*/
+	double *updateBiasMat;/* stores the velocity in the bias space*/
 	double *labelMat;
 }TrainInfo;
 
@@ -45,8 +47,6 @@ typedef struct _LayerElem{
 	int srcDim; /* the number of units in the input layer */
 	double *weights;/* the weight matrix of the layer should number of nodes by input dim*/
 	double *bias; /* the bias vector */
-	double *updateWeightMat; /* stores the velocity in the weight space*/
-	double *updateBiasMat;/* stores the velocity in the bias space*/
 	FELink feaElem; /* stores the  input activations coming into the layer as well the output activations going out from the layer */
 	ERLink errElem;
 	TRLink info;
@@ -62,7 +62,10 @@ typedef struct _ANNdef{
 }ANNDef;
 
 
+void setBatchSize(int sampleSize);
+void reinitLayerMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
+void initialiseWithZero(double * matrix, int dim);
 double drand();
 double random_normal();
 void initialiseBias(double *biasVec,int dim, int srcDim);
@@ -74,20 +77,22 @@ double computeTanh(double x);
 double computeSigmoid(double x);
 void computeActOfLayer(LELink layer);
 void computeLinearActivation(LELink layer);
-void fwdPassOfANN();
+void fwdPassOfDNN(ADLink anndef);
 
 void computeDrvAct(double *dyfeat , double *yfeat,int len);
 void computeActivationDrv (LELink layer);
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples);
 void subtractMatrix(double *dyfeat, double* labels, int dim);
-void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc );
+void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 void BackPropBatch(ADLink anndef);
 
-void findMaxElement(double *matrix, int row, int col, int *vec);
-void updatateAcc(int *labels, LELink layer);
+void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
+void findMaxElement(double *matrix, int row, int col, double *vec);
+void updatateAcc(double *labels, LELink layer,int dataSize);
 void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim);
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
-void TrainDNN(ADLink anndef);
+Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
+void TrainDNN();
 void freeMemoryfromANN();
