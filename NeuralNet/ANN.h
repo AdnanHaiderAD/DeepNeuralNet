@@ -1,3 +1,5 @@
+
+typedef enum {TRUE, FALSE} Boolean;
 typedef enum {XENT, SSE} ObjFuncKind;
 typedef enum {REGRESSION, CLASSIFICATION} OutFuncKind;
 typedef enum {HIDDEN,INPUT,OUTPUT} LayerRole;
@@ -8,6 +10,14 @@ typedef struct _ANNdef *ADLink;
 typedef struct _FeatElem *FELink;
 typedef struct _ErrorElem *ERLink;
 typedef struct _TrainInfo *TRLink;
+typedef struct _MSI *MSLink;
+
+
+/*model set info -this struct is needed to compare the error on the validation dataset between two epochs*/
+typedef struct _MSI{
+double crtVal;
+double prevCrtVal;
+}MSI
 
 typedef struct _TrainInfo{
 	double *dwFeatMat;
@@ -36,7 +46,7 @@ typedef struct _LayerElem{
 	double *weights;/* the weight matrix of the layer should number of nodes by input dim*/
 	double *bias; /* the bias vector */
 	double *updateWeightMat; /* stores the velocity in the weight space*/
-	double *updateBiasMat;
+	double *updateBiasMat;/* stores the velocity in the bias space*/
 	FELink feaElem; /* stores the  input activations coming into the layer as well the output activations going out from the layer */
 	ERLink errElem;
 	TRLink info;
@@ -73,4 +83,11 @@ void subtractMatrix(double *dyfeat, double* labels, int dim);
 void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc );
 void BackPropBatch(ADLink anndef);
 
+void findMaxElement(double *matrix, int row, int col, int *vec);
+void updatateAcc(int *labels, LELink layer);
+void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim);
+void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
+void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
+void updateLearningRate(int currentEpochIdx, double *lrnRate);
+void TrainDNN(ADLink anndef);
 void freeMemoryfromANN();

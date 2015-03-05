@@ -9,28 +9,33 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-#ifndef BATCHSAMPLES
-#define BATCHSAMPLES 1
-#endif
 #ifdef CBLAS
 #include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
 #endif
 
+/*hyper-parameters deep Neural Net training initialised with default values*/
+static int BATCHSAMPLES = 100;
+static double weightdecay = 1;
+static double momentum = 1; 
+static int  maxEpochNum = 5; 
+static double initLR = 0.001; 
+static double threshold = 0.5 ; 
 
-/*configurations for adapting parameters*/
-static double learningrate;
-static double weightdecay;
-static double momentum;
-static int  maxEpochNum;
-static double minLR;
+/*training data set and validation data set*/
+static double * inputData;
+static int * labelIdx;
+static double * validationData;
+static int * validationLabelIdx;
+static int trainingDataSize;
+static int validationDataSize;
 
-
+/*configurations for DNN architecture*/
+static MSLink modelSetInfo = NULL;
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
 static int numLayers;
 static int inputDim;
 static int targetDim;
-static double *labels;
 static OutFuncKind target;
 static ObjFuncKind errfunc;
 static ADLink anndef;
@@ -94,7 +99,6 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	}else{
 		srcDim = inputDim;
 	}
-
 	layer->id = i;
 	layer->src = srcLayer;
 	layer->srcDim = srcDim;
@@ -118,7 +122,6 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	layer-> weights = malloc(sizeof(double)*numOfElems);
 	assert(layer->weights!=NULL);
 	initialiseWeights(layer->weights,layer->dim,layer->srcDim);
-	
 	layer->bias = malloc(sizeof(double)*(layer->dim));
 	assert(layer->bias!=NULL);
 	initialiseBias(layer->bias,layer->dim, layer->srcDim);
@@ -128,7 +131,6 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	assert(layer->feaElem!=NULL);
 	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
 	layer->feaElem->xfeatMat = (srcLayer != NULL) ? srcLayer->feaElem->yfeatMat : NULL;
-
 	//intialise traininfo
 	layer->info = (TRLink) malloc(sizeof(TrainInfo));
 	layer->info->dwFeatMat = malloc(sizeof(double)*numOfElems);
@@ -145,10 +147,8 @@ void  initialiseANN(){
 	int i;
 	anndef = malloc(sizeof(ANNDef));
 	assert(anndef!=NULL);
-	
 	anndef->target = target;
 	anndef->layerNum = numLayers;
-	anndef->labelMat = labels;
 	anndef->layerList = (LELink *) malloc (sizeof(LELink)*numLayers);
 	assert(anndef->layerList!=NULL);
 	/*initialise the seed only once then initialise weights and bias*/
@@ -157,7 +157,6 @@ void  initialiseANN(){
 	for(i = 0; i<anndef->layerNum; i++){
 		anndef->layerList[i] = (LELink) malloc (sizeof(LayerElem));
 		assert (anndef->layerList[i]!=NULL);
-		printf("layer %d \n",i);
 		if (i == 0 ){
 			initialiseLayer(anndef->layerList[i],i, NULL);
 		}else{
@@ -245,7 +244,7 @@ void computeLinearActivation(LELink layer){
 }   
 
 /*forward pass*/
-void fwdPassOfANN(){
+void fwdPassOfANN(ADLink anndef){
 	LELink layer;
 	int i;
 	switch(anndef->target){
@@ -334,14 +333,11 @@ void CalcOutLayerBackwardSignal(LELink layer,ObjFuncKind errorfunc ){
 				case SIGMOID:
 					subtractMatrix(layer->errElem->dyFeatMat,layer->info->labelMat,layer->dim*BATCHSAMPLES);
 				break;
-
 				case SOFTMAX:
 					subtractMatrix(layer->errElem->dyFeatMat,layer->info->labelMat,layer->dim*BATCHSAMPLES);
 				break;
-
 				case TANH:
 				break;
-
 				case IDENTITY:
 				break;
 			}
@@ -402,6 +398,38 @@ void BackPropBatch(ADLink anndef){
 }
 //-------------------------------------------------------------------------------------------
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
+
+/*The function finds the most active node in the output layer for each sample*/
+void findMaxElement(double *matrix, int row, int col, int *vec){
+	int maxIdx, i, j;
+   double maxVal;
+	for (i = 0; i < row; ++i) {
+      maxIdx = 0;
+      maxVal = matrix[i * col + 0];
+      for (j = 1; j < col; ++j) {
+         if (maxVal < matrix[i * col + j]) {
+            maxIdx = j;
+            maxVal = matrix[i * col + j];
+            }
+        }
+      vec[i] = maxIdx;
+    }
+}
+/** the function calculates the percentage of correctly labelled data*/
+void updatateAcc(int *labels, LELink layer){
+	int i,dim,accCount;
+	dim = layer->dim;
+	int predictions[] = malloc(sizeof(int)*BATCHSAMPLES);
+	findMaxElement(layer->feaElem->yfeatMat,BATCHSAMPLES,dim,predictions);
+	for (i = 0; i<BATCHSAMPLES;i++){
+		if predictions[i] == labels [i]){
+			accCount+=1;
+		}	
+	}
+	//assuming modelsetinfo is not Null
+	modelsetinfo->crtVal = accCount/BATCHSAMPLES;
+}
+/* this function allows the addition of  two matrices or two vectors*/
 void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim){
 	//blas routine
 	#ifdef CBLAS
@@ -413,7 +441,7 @@ void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim){
 		}
 	#endif	
 }
-
+/*multipy a vector or a matrix with a scalar*/
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim){
 	//blas routine
 	#ifdef CBLAS
@@ -463,15 +491,74 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 			addMatrixOrVec(layer->info->dbFeaMat,layer->bias,layer->dim);
 		}
 	}
-
 }
 
+void updateLearningRate(int currentEpochIdx, double *lrnRate){
+	double crtvaldiff;
+	if (currentEpochIdx == 0) {
+		*lrnrate = (-1)* initLR;
+	}else if (modelSetInfo !=NULL){
+		crtvaldiff = modelSetInfo->crtVal - modelSetInfo->prevCrtVal;
+		if (crtvaldiff < threshold){
+			*lrnrate /=2;
+		}
+	}
+}
 
+Boolean terminateSchedNotTrue(int currentEpochIdx,int lrnrate){
+	if (currentEpochIdx = 0) return TRUE;
+	if (currentEpochIdx >=0 & currentEpochIdx < maxEpochNum) return FALSE;
+	if( lrnrate < minLR) return FALSE;
+	return TRUE; 
+}
 
+void TrainDNN(ADLink anndef){
+	int currentEpochIdx;
+	double learningrate;
 	
+	currentEpochIdx = 0;
+	modelSetInfo = malloc (sizeof(MSI));
+	modelSetInfo ->crtVal = 0;
+
+	//with the initialisation of weights,check how well DNN performs on validation data
+	anndef->layerList[0]->feaElem->xfeatMat = validationData;
+	BATCHSAMPLES = validationDataSize;
+	anndef->labelMat = validationLabelIdx;
+	fwdPassOfANN(anndef);
+	updatateAcc(validationLabelIdx, anndef->layerList[layerNum-1]);
+	
+	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
+		updateLearningRate(currentEpochIdx,&learningrate);
+		
+		//load training data into the ANN and perform forward pass
+		anndef->layerList[0]->feaElem->xfeatMat = inputData;
+		BATCHSAMPLES =  trainingDataSize;
+		anndef->labelMat = labels ;
+		fwdPassOfANN(anndef);
+
+		// run backpropagation and update the parameters:
+		BackPropBatch(anndef);
+		updateNeuralNetParams(anndef,learningrate,momentum,weightdecay);
+
+		//forward pass of DNN on validation data
+		if (validationData != NULL && validationLabelIdx != NULL){
+			anndef->layerList[0]->feaElem->xfeatMat = validationData;
+			BATCHSAMPLES = validationDataSize;
+			anndef->labelMat = validationLabelIdx;
+			fwdPassOfANN(anndef);
+			//update the model set info
+			modelsetinfo->prevCrtVal = modelsetinfo->crtVal;
+			updatateAcc(validationLabelIdx, anndef->layerList[layerNum-1]);
+		}else{
+			modelsetinfo->prevCrtVal = modelsetinfo->crtVal;
+			updatateAcc(labels,anndef->layerList[layerNum-1]);
+		}
+		currentEpochIdx+=1;
+	}
 
 
 
+}
 //========================================================================================================
 //Note : In the current architecture, I dont specially allocate memory to the ANN to hold labels and input
 void freeMemoryfromANN(){
@@ -514,6 +601,7 @@ void freeMemoryfromANN(){
 		}
 		free(anndef->layerList);	
 		free(anndef);
+		free(modelsetinfo);
 	}
 	printf("Finished freeing memory\n");	
 }
@@ -539,7 +627,7 @@ void unitTests(){
 	labels = lab;
 	printf("before initialisation \n");
 
-	initialiseANN();
+	initialiseANN(anndef);
 	printf("initialisation successful \n");
 	double input[] ={1,1};
 
@@ -591,15 +679,15 @@ void unitTests(){
 	weight_value = anndef->layerList[0]->weights[1];
 	biasV = anndef->layerList[0]->bias[0];
 	anndef->layerList[0]->weights[1]=anndef->layerList[0]->weights[1]+0.0000000001;
-	fwdPassOfANN();
+	fwdPassOfANN(anndef);
 	double errorB0 = anndef->layerList[1]->feaElem->yfeatMat[0];
 	
 	anndef->layerList[0]->weights[1]=anndef->layerList[0]->weights[1]-0.0000000002;
-	fwdPassOfANN();
+	fwdPassOfANN(anndef);
 	double errorB20 = anndef->layerList[1]->feaElem->yfeatMat[0];
 	
 	anndef->layerList[0]->weights[1] = weight_value;
-	fwdPassOfANN();
+	fwdPassOfANN(anndef);
 
 	//testing Back-propagation
 	BackPropBatch(anndef);
