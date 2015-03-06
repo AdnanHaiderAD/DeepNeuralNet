@@ -44,10 +44,59 @@ static OutFuncKind target;
 static ObjFuncKind errfunc;
 static ADLink anndef;
 
+//-----------------------------------------------------------------------------------
+/**This section of the code parses Command Line arguments**/
+//----------------------------------------------------------------------------------
+void loadMatrix(double *matrix,){
+	FILE *fp;
+
+}
+
+
+
+
+
+void parseCMDargs(int argc, char *argv[]){
+	int i;
+	if strcmp(argv[i],"-C")!=0){
+		printf("the first argument to ANN must be the config file \n");
+		exit(0);
+	}
+	for (i = 1 ; i <argc;i++){
+		if (strcmp(argv[i],"-C")==0){
+			++i;
+			//parse the config file to set the configurations for DNN architecture
+			printf("config file name %s \n",argv[i]);
+		}else if(strcmp(argv[i],"-S")==0){
+			++i;
+			//load the input batch for training
+			loadMatrix(inputData);
+			printf("training file name %s \n",argv[i]);
+		}else if(strcmp(argv[i],"-L")==0){
+			++i;
+			//load the training labels or outputs in case of regression
+			printf("label file name %s \n",argv[i]);
+		}else if(strcmp(argv[i],"-v")==0){
+			++i;
+			//load the validation training samples 
+			printf("validation file name %s \n",argv[i]);
+		}else if(strcmp(argv[i],"-vL")==0){
+			++i;
+			//load the validation training labels or expected outputs
+			printf("validation label file name %s \n",argv[i]);
+		}
+		continue;
+	}
+}
+
+
+
+
 //--------------------------------------------------------------------------------
 /**This section of the code deals with handling the batch sizes of the data**/
 void setBatchSize(int sampleSize){
-	BATCHSAMPLES = sampleSize < CACHESIZE ? sampleSize : CACHESIZE;
+	//BATCHSAMPLES = sampleSize < CACHESIZE ? sampleSize : CACHESIZE;
+	BATCHSAMPLES = sampleSize;
 }
 
 //-----------------------------------------------------------------------------------------------------------
@@ -173,15 +222,13 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	layer->info->updateBiasMat = NULL;
 
 	if (momentum > 0) {
-		printf("ASSDHDBHJDHK\n");
 		layer->info->updateWeightMat = malloc(sizeof(double)*numOfElems);
 		layer->info->updateBiasMat = malloc(sizeof(double)*(layer->dim));
 		initialiseWithZero(layer->info->updateWeightMat,numOfElems);
 		initialiseWithZero(layer->info->updateBiasMat,layer->dim);
-			
 	}
-		
 }
+
 void  initialiseDNN(){
 	int i;
 	anndef = malloc(sizeof(ANNDef));
@@ -202,32 +249,9 @@ void  initialiseDNN(){
 			initialiseLayer(anndef->layerList[i],i, anndef->layerList[i-1]);
 		}	
 	}
-
 	anndef->errorfunc = errfunc;
 	//initialise ErrElems of layers for back-propagation
 	initialiseErrElems(anndef);
-
-	LELink layer;
-	int c,j,k;
-	for (i = 0; i <numLayers;i++){
-		layer = anndef->layerList[i];
-		printf( "\nLayer %d ",i);
-		c = 0;
-		for (j = 0; j< layer->dim ;j++){
-			printf("\n weights for node %d\n ",j);
-			for (k = 0; k <layer->srcDim;k++){
-				printf("weight is %lf  ",layer->weights[c]);
-				c++;
-			}
-
-		}
-		printf( "\n bias is ");
-		for (j = 0; j< layer->dim ;j++){
-			printf(" %f ", layer->bias[j]);
-		}
-		
-	}
-
 }
 //------------------------------------------------------------------------------------------------
 /*this section of the code implements the  forward propgation of a deep neural net **/
@@ -416,34 +440,8 @@ void BackPropBatch(ADLink anndef){
 		//compute derivative with respect to bias: the result should an array of size layer->dim ..we just sum the columns of dyFeatMat
 		sumColsOfMatrix(layer->errElem->dyFeatMat,layer->info->dbFeaMat,layer->dim,BATCHSAMPLES);
 		#endif
-		
-		c = 0;
-
-		printf("\n xfeat for layer %d \n",layer->id);
-		for (j = 0; j< layer->srcDim*BATCHSAMPLES;j++){
-			printf("%lf ",layer->feaElem->xfeatMat[j]);
-		}
-
-		for (j = 0; j< layer->dim ;j++){
-			printf("\n de/dw for node %d\n ",j);
-			for (k = 0; k <layer->srcDim;k++){
-				printf(" %lf ",layer->info->dwFeatMat[c]);
-				c++;
-			}
-
-		}
-		printf( "\n bias is ");
-		for (j = 0; j< layer->dim ;j++){
-			printf(" %f ", layer->info->dbFeaMat[j]);
-		}
-
-		printf("\n dE/dx for layer %d \n",layer->id);
-		for (j = 0; j< layer->srcDim*BATCHSAMPLES;j++){
-			printf("%lf ",layer->errElem->dxFeatMat[j]);
-		}
-		
-	}	
-}
+	}
+}	
 
 
 //----------------------------------------------------------------------------------------------------
@@ -456,7 +454,6 @@ void perfBinClassf(double *yfeatMat, double *predictions,int dataSize){
 		printf("Predictions %d  %lf  and yfeat is %lf \n",i,predictions[i],yfeatMat[i]);
 	}
 }
-
 
 /*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec){
@@ -557,27 +554,6 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 			addMatrixOrVec(layer->info->dbFeaMat,layer->bias,layer->dim);
 		}
 	}
-	int c,j,k;
-	for (i = 0; i <numLayers;i++){
-		layer = anndef->layerList[i];
-		printf( "\nLayer %d ",i);
-		c = 0;
-		for (j = 0; j< layer->dim ;j++){
-			printf("\n weights for node %d\n ",j);
-			for (k = 0; k <layer->srcDim;k++){
-				printf("weight is %lf  ",layer->weights[c]);
-				c++;
-			}
-
-		}
-		printf( "\n bias is ");
-		for (j = 0; j< layer->dim ;j++){
-			printf(" %f ", layer->bias[j]);
-		}
-		
-	}
-
-
 }
 
 void updateLearningRate(int currentEpochIdx, double *lrnrate){
@@ -842,9 +818,33 @@ void unitTests(){
 
 }
 
+
 //=================================================================================
 
-int main(){
-	unitTests();
+int main(int argc, char *argv[]){
+	if (argc != 11 && argc != 12 ){
+		printf("The program expects a minimum of  5 args and a maximum of 6 args : Eg : -C config \n -S traindatafile \n -L traininglabels \n -v validationdata \n -vl validationdataLabels \n optional argument : -T testData \n ");
+	}
+	parseCMDargs(argc, argv);
+
+FILE *fp;
+size_t len = 0;
+char *line =NULL;
+fp = fopen("/Users/adnan/NeuralNet/NeuralNet/tmp","r");	
+char* token;
+double value;
+while (getline(&line, &len, fp)!= -1){
+	token = strtok(line, " ");
+	while (token != NULL){
+		value = strtod(token ,NULL);
+		printf( "%lf",value);
+		token = strtok(NULL," ");
+	}
+	printf("\n");
+}
+
+
+
+	//unitTests();
 }
 
