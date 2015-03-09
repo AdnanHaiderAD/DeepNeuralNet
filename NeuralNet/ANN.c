@@ -40,52 +40,220 @@ static int *hidUnitsPerLayer;
 static int numLayers;
 static int inputDim;
 static int targetDim;
-static OutFuncKind target;
-static ObjFuncKind errfunc;
+static OutFuncKind target = CLASSIFICATION;
+static ObjFuncKind errfunc = XENT;
 static ADLink anndef;
 
 //-----------------------------------------------------------------------------------
-/**This section of the code parses Command Line arguments**/
+/**This section of the code deals with parsing Command Line arguments**/
 //----------------------------------------------------------------------------------
-void loadMatrix(double *matrix,){
+void loadLabels(double *labelMat,char*filepath,char *datatype){
 	FILE *fp;
+	int i,c;
+	char *line = NULL;
+	size_t len = 0;
+	int id ;
 
+	fp = fopen(filepath,"r");
+	i = 0;
+	while(getline(&line,&len,fp)!=-1){
+		id  = (int) strtod(line,NULL);
+		for (c = 0; c < targetDim;c++){
+			labelMat[i*targetDim +c] = 0;
+		}
+		labelMat[i*targetDim + id] = 1;
+		if (strcmp(datatype,"train")==0){
+			if (i*targetDim > trainingDataSize*targetDim){
+				printf("Error! : the number of training labels doesnt match the size of the training set \n");
+				exit(0);
+			}
+		}else if(strcmp(datatype,"validation")==0){
+			if(i*targetDim > validationDataSize*targetDim){
+				printf("Error! : the number of validation target labels doesnt match the size of the validation set \n");
+				exit(0);
+			}
+		}
+		i+=1;
+	}
+	free(line);
+	fclose(fp);		
 }
 
+void loadMatrix(double *matrix,char *filepath, char *datatype){
+	FILE *fp;
+	int i;
+	char *line = NULL;
+	size_t len = 0;
+	char* token;
+	
+	fp = fopen(filepath,"r");
+	i = 0;
+	while(getline(&line,&len,fp)!=-1){
+		token = strtok(line," ");
+		while (token !=NULL){
+			matrix[i] = strtod(token,NULL);
+			token = strtok(NULL," ");
+			if (strcmp(datatype,"train")==0){
+				if (i > trainingDataSize*inputDim){
+					printf("Error: either the size of the training set or the dim of the  feature vectors have been incorrectly specified in config file \n");
+					exit(0);
+				}
+			}else if (strcmp(datatype,"validation")==0){
+				if (i > validationDataSize*inputDim){
+					printf("Error: either the size of the   validation dataset or the dim of the  target vectors have been incorrectly specified in config file \n");
+					exit(0);
+				}
+			}
+			i+=1;
+		}
+	}	
+	free(line);
+	fclose(fp);
+}
 
+void parseCfg(char * filepath){
+	FILE *fp;
+	
+	char *line = NULL;
+	size_t len = 0;
+	char* token;
 
+	fp = fopen(filepath,"r");
+	while(getline(&line,&len,fp)!=-1){
+		token = strtok(line," : ");
+		if (strcmp(token,"momentum")==0){
+			token = strtok(NULL," : ");
+			momentum = strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"weightdecay")==0){
+			token = strtok(NULL," : ");
+			weightdecay = strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;	
+		}
+		if (strcmp(token,"minLR")==0){
+			token = strtok(NULL," : ");
+			minLR = strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue	;
+		}
+		if (strcmp(token,"maxEpochNum")==0){
+			token = strtok(NULL," : ");
+			maxEpochNum = (int) strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"initLR")==0){
+			token = strtok(NULL," : ");
+			initLR =  strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"threshold")==0){
+			token = strtok(NULL," : ");
+			threshold = strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"numLayers")==0){
+			token = strtok(NULL," : ");
+			numLayers = (int) strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"inputDim")==0){
+			token = strtok(NULL," : ");
+			inputDim = (int) strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"targetDim")==0){
+			token = strtok(NULL," : ");
+			targetDim = (int) strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"trainingDataSize")==0){
+			token = strtok(NULL," : ");
+			trainingDataSize = (int) strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"validationDataSize")==0){
+			token = strtok(NULL," : ");
+			validationDataSize = (int)strtod (token,NULL);
+			token = strtok(NULL," : ");
+			continue;
+		}
+		if (strcmp(token,"Errfunc")==0){
+			token = strtok(NULL," : ");
+			if (strcmp("XENT",token)==0){
+				errfunc = XENT;
+				target = CLASSIFICATION;
+			}else if (strcmp("SSE",token)==0){
+				errfunc = SSE ;
+				target = REGRESSION ;
+			}	
+			continue;
+		}
+		
+		if (strcmp(token,"hiddenUnitsPerLayer")==0){
+			continue;
+		}
+		if (strcmp(token,"activationfunctionsPerLayer")==0){
+			continue;
+		}
+		
+	}
+	free(line);
+	fclose(fp);
+}
 
 
 void parseCMDargs(int argc, char *argv[]){
 	int i;
-	if strcmp(argv[i],"-C")!=0){
+	if (strcmp(argv[1],"-C")!=0){
 		printf("the first argument to ANN must be the config file \n");
 		exit(0);
 	}
-	for (i = 1 ; i <argc;i++){
-		if (strcmp(argv[i],"-C")==0){
+	for (i = 1 ; i < argc;i++){
+		if (strcmp(argv[i],"-C") == 0){
 			++i;
+			parseCfg(argv[i]);
 			//parse the config file to set the configurations for DNN architecture
-			printf("config file name %s \n",argv[i]);
-		}else if(strcmp(argv[i],"-S")==0){
-			++i;
+			printf("config file %s has been successfully parsed \n",argv[i]);
+			continue;
+		}
+	   if(strcmp(argv[i],"-S") == 0){
+	   	++i;
 			//load the input batch for training
-			loadMatrix(inputData);
-			printf("training file name %s \n",argv[i]);
-		}else if(strcmp(argv[i],"-L")==0){
+			loadMatrix(inputData,argv[i],"train");
+			printf("training samples from %s have been successfully loaded \n",argv[i]);
+			continue;
+		}
+		if(strcmp(argv[i],"-L")==0){
 			++i;
 			//load the training labels or outputs in case of regression
-			printf("label file name %s \n",argv[i]);
-		}else if(strcmp(argv[i],"-v")==0){
+			loadLabels(labels,argv[i],"train");
+			printf("training labels from %s have been successfully loaded \n",argv[i]);
+			continue;
+		} 
+		if(strcmp(argv[i],"-v")==0){
 			++i;
 			//load the validation training samples 
-			printf("validation file name %s \n",argv[i]);
-		}else if(strcmp(argv[i],"-vL")==0){
+			loadMatrix(validationData,argv[i],"validation");
+			printf("samples from validation file %s have been successfully loaded \n",argv[i]);
+			continue;
+		}
+		if(strcmp(argv[i],"-vL")==0){
 			++i;
 			//load the validation training labels or expected outputs
-			printf("validation label file name %s \n",argv[i]);
+			loadLabels(validationLabelIdx,argv[i],"validation");
+			printf("validation labels from %s have been successfully loaded\n",argv[i]);
+			continue;
 		}
-		continue;
 	}
 }
 
@@ -414,8 +582,9 @@ void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
 				case IDENTITY:
 				break;
 			}
-		default:
-		break	;
+		case (SSE):
+			subtractMatrix(layer->errElem->dyFeatMat,anndef->labelMat,layer->dim*BATCHSAMPLES);	
+			break;
 	}
 }
 
@@ -825,26 +994,81 @@ int main(int argc, char *argv[]){
 	if (argc != 11 && argc != 12 ){
 		printf("The program expects a minimum of  5 args and a maximum of 6 args : Eg : -C config \n -S traindatafile \n -L traininglabels \n -v validationdata \n -vl validationdataLabels \n optional argument : -T testData \n ");
 	}
+	//inputDim = 36;
+	//trainingDataSize =151;
+
+	inputDim = 4;
+	trainingDataSize =2;
+	validationDataSize =2;
+	inputData = malloc (sizeof(double)*(inputDim*trainingDataSize));
+	validationData = malloc(sizeof(double)*inputDim*validationDataSize);
+	
+	targetDim = 3;
+	labels = malloc (sizeof(double)*(targetDim*trainingDataSize));
+	validationLabelIdx = malloc(sizeof(double)*(targetDim*validationDataSize));
+
+
+
+
 	parseCMDargs(argc, argv);
 
-FILE *fp;
-size_t len = 0;
-char *line =NULL;
-fp = fopen("/Users/adnan/NeuralNet/NeuralNet/tmp","r");	
-char* token;
-double value;
-while (getline(&line, &len, fp)!= -1){
-	token = strtok(line, " ");
-	while (token != NULL){
-		value = strtod(token ,NULL);
-		printf( "%lf",value);
-		token = strtok(NULL," ");
+	printf("'REACHES HERE'\n" );
+
+
+	int i,j,c;
+	c = 0;
+	for (i = 0; i < trainingDataSize;i++){
+		printf("sample  id %d\n",i);
+		for (j = 0; j < inputDim; j++){
+			printf(" %lf ",inputData[c]);
+			c+=1;
+		}
+		printf("\n");
 	}
-	printf("\n");
-}
+
+	c = 0;
+	for (i = 0; i < validationDataSize;i++){
+		printf("sample  id %d\n",i);
+		for (j = 0; j < targetDim; j++){
+			printf(" %lf ",validationData[c]);
+			c+=1;
+		}
+		printf("\n");
+	}
+	
+	free(inputData);
+	free (validationData);
+
+	//display loaded labels:
+	c=0;
+	for (i = 0; i < trainingDataSize;i++){
+		printf("sample  id %d\n",i);
+		printf("labels \n");
+		for (j = 0; j < targetDim; j++){
+			printf(" %lf ",labels[c]);
+			c+=1;
+		}
+		printf("\n");
+	}
 
 
 
+	free(labels);
+	free (validationLabelIdx);
+
+	printf("maxEpochNum %d\n",maxEpochNum);
+	printf("initLR %lf \n",initLR );
+	printf("threshold %lf \n",threshold );
+	printf("minLR %lf\n",minLR);
+	printf("weightdecay %lf\n",weightdecay);
+	printf("momentum %lf\n",momentum);
+
+	printf("numLayers %d \n",numLayers);
+	printf("trainingDataSize %d\n", trainingDataSize);
+	printf("validationDataSize %d \n",validationDataSize);
+	printf("inputDim %d\n",inputDim);
+	printf("targetDim %d\n",targetDim );
+	printf("numLayers %d\n",numLayers);
 	//unitTests();
 }
 

@@ -1,0 +1,9 @@
+momentum : 0.0000001
+weightdecay : 0.90
+minLR : 0..00023
+threshold : 0.1234
+maxEpochNum : 189
+targetDim : 3
+inputDim : 4
+numLayers : 10
+rainingDataSize : 2
