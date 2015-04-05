@@ -30,8 +30,8 @@ static double * inputData;
 static double * labels;
 static double * validationData;
 static double * validationLabelIdx;
-static int trainingDataSize;
-static int validationDataSize;
+static int trainingDataSetSize;
+static int validationDataSetSize;
 
 /*configurations for DNN architecture*/
 static MSLink modelSetInfo = NULL;
@@ -40,13 +40,18 @@ static int *hidUnitsPerLayer;
 static int numLayers;
 static int inputDim;
 static int targetDim;
-static OutFuncKind target = CLASSIFICATION;
-static ObjFuncKind errfunc = XENT;
-static ADLink anndef;
+static OutFuncKind target;
+static ObjFuncKind errfunc; 
+static ADLink anndef = NULL;
 
 //-----------------------------------------------------------------------------------
 /**This section of the code deals with parsing Command Line arguments**/
 //----------------------------------------------------------------------------------
+void cleanString(char *Name){
+	char *pos;
+	if ((pos=strchr(Name, '\n')) != NULL)
+	    *pos = '\0';
+}
 void loadLabels(double *labelMat,char*filepath,char *datatype){
 	FILE *fp;
 	int i,c;
@@ -57,18 +62,27 @@ void loadLabels(double *labelMat,char*filepath,char *datatype){
 	fp = fopen(filepath,"r");
 	i = 0;
 	while(getline(&line,&len,fp)!=-1){
-		id  = (int) strtod(line,NULL);
-		for (c = 0; c < targetDim;c++){
-			labelMat[i*targetDim +c] = 0;
+		cleanString(line);
+		//extracting labels 
+		if (target==CLASSIFICATION){
+			id  = (int) strtod(line,NULL);
+			for (c = 0; c < targetDim;c++){
+				labelMat[i*targetDim +c] = 0;
+			}
+			labelMat[i*targetDim + id] = 1;
 		}
-		labelMat[i*targetDim + id] = 1;
+		//extracting function outputs
+		else{
+			id  = strtod(line,NULL);
+			labelMat[i] = id ;
+		}
 		if (strcmp(datatype,"train")==0){
-			if (i*targetDim > trainingDataSize*targetDim){
+			if (i*targetDim > trainingDataSetSize*targetDim){
 				printf("Error! : the number of training labels doesnt match the size of the training set \n");
 				exit(0);
 			}
 		}else if(strcmp(datatype,"validation")==0){
-			if(i*targetDim > validationDataSize*targetDim){
+			if(i*targetDim > validationDataSetSize*targetDim){
 				printf("Error! : the number of validation target labels doesnt match the size of the validation set \n");
 				exit(0);
 			}
@@ -90,16 +104,16 @@ void loadMatrix(double *matrix,char *filepath, char *datatype){
 	i = 0;
 	while(getline(&line,&len,fp)!=-1){
 		token = strtok(line," ");
-		while (token !=NULL){
+		while (token != NULL){
 			matrix[i] = strtod(token,NULL);
 			token = strtok(NULL," ");
-			if (strcmp(datatype,"train")==0){
-				if (i > trainingDataSize*inputDim){
+			if (strcmp(datatype,"train")== 0){
+				if (i > trainingDataSetSize*inputDim){
 					printf("Error: either the size of the training set or the dim of the  feature vectors have been incorrectly specified in config file \n");
 					exit(0);
 				}
 			}else if (strcmp(datatype,"validation")==0){
-				if (i > validationDataSize*inputDim){
+				if (i > validationDataSetSize*inputDim){
 					printf("Error: either the size of the   validation dataset or the dim of the  target vectors have been incorrectly specified in config file \n");
 					exit(0);
 				}
@@ -117,6 +131,7 @@ void parseCfg(char * filepath){
 	char *line = NULL;
 	size_t len = 0;
 	char* token;
+	char* list;
 
 	fp = fopen(filepath,"r");
 	while(getline(&line,&len,fp)!=-1){
@@ -175,15 +190,15 @@ void parseCfg(char * filepath){
 			token = strtok(NULL," : ");
 			continue;
 		}
-		if (strcmp(token,"trainingDataSize")==0){
+		if (strcmp(token,"trainingDataSetSize")==0){
 			token = strtok(NULL," : ");
-			trainingDataSize = (int) strtod (token,NULL);
+			trainingDataSetSize = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
-		if (strcmp(token,"validationDataSize")==0){
+		if (strcmp(token,"validationDataSetSize")==0){
 			token = strtok(NULL," : ");
-			validationDataSize = (int)strtod (token,NULL);
+			validationDataSetSize = (int)strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
@@ -200,9 +215,49 @@ void parseCfg(char * filepath){
 		}
 		
 		if (strcmp(token,"hiddenUnitsPerLayer")==0){
+			hidUnitsPerLayer = malloc(sizeof(int)*numLayers);
+			token = strtok(NULL," : ");
+			list = token;
+			while(token != NULL){
+				token = strtok(NULL,":");
+			}	
+			token = strtok(list,",");
+			cleanString(token);
+			int count = 0;
+			while(token !=NULL){
+				*(hidUnitsPerLayer+count) = (int) strtod (token,NULL);
+				count+=1;
+				token = strtok(NULL,",");
+				if (token == NULL) break;
+				cleanString(token);
+			}
 			continue;
 		}
 		if (strcmp(token,"activationfunctionsPerLayer")==0){
+			actfunLists = malloc( sizeof(ActFunKind)*numLayers);
+			token = strtok(NULL," : ");
+			list = token;
+			while(token !=NULL){
+				token = strtok(NULL,":");
+			}
+			token = strtok(list,",");
+			cleanString(token);
+		   int count = 0;
+			while(token !=NULL){
+			if (strcmp(token,"SIGMOID")==0){
+				*(actfunLists+count) = SIGMOID ;
+				}else if (strcmp(token,"IDENTITY")==0){
+					*(actfunLists+count) = IDENTITY;
+				}else if (strcmp(token,"TANH")==0){
+					*(actfunLists+count) = TANH ;
+				}else if (strcmp(token,"SOFTMAX")==0){
+					*(actfunLists+count) = SOFTMAX;
+			}		
+				count+=1;
+				token = strtok(NULL,",");
+				if (token ==NULL) break;
+				cleanString(token);
+			}	
 			continue;
 		}
 		
@@ -221,6 +276,7 @@ void parseCMDargs(int argc, char *argv[]){
 	for (i = 1 ; i < argc;i++){
 		if (strcmp(argv[i],"-C") == 0){
 			++i;
+			printf("parsing cfg\n");
 			parseCfg(argv[i]);
 			//parse the config file to set the configurations for DNN architecture
 			printf("config file %s has been successfully parsed \n",argv[i]);
@@ -229,6 +285,8 @@ void parseCMDargs(int argc, char *argv[]){
 	   if(strcmp(argv[i],"-S") == 0){
 	   	++i;
 			//load the input batch for training
+			printf("parsing training data file \n");
+			inputData = malloc(sizeof(double)*(trainingDataSetSize*inputDim));
 			loadMatrix(inputData,argv[i],"train");
 			printf("training samples from %s have been successfully loaded \n",argv[i]);
 			continue;
@@ -236,6 +294,8 @@ void parseCMDargs(int argc, char *argv[]){
 		if(strcmp(argv[i],"-L")==0){
 			++i;
 			//load the training labels or outputs in case of regression
+			printf("parsing training-labels file \n");
+			labels = malloc(sizeof(double)*(trainingDataSetSize*targetDim));
 			loadLabels(labels,argv[i],"train");
 			printf("training labels from %s have been successfully loaded \n",argv[i]);
 			continue;
@@ -243,13 +303,17 @@ void parseCMDargs(int argc, char *argv[]){
 		if(strcmp(argv[i],"-v")==0){
 			++i;
 			//load the validation training samples 
+			printf("parsing validation-data file \n");
+			validationData = malloc (sizeof(double)*(validationDataSetSize*inputDim));
 			loadMatrix(validationData,argv[i],"validation");
 			printf("samples from validation file %s have been successfully loaded \n",argv[i]);
 			continue;
 		}
-		if(strcmp(argv[i],"-vL")==0){
+		if(strcmp(argv[i],"-vl")==0){
 			++i;
 			//load the validation training labels or expected outputs
+			printf("parsing validation-data-label file \n");
+			validationLabelIdx = malloc(sizeof(double)*(validationDataSetSize*targetDim));
 			loadLabels(validationLabelIdx,argv[i],"validation");
 			printf("validation labels from %s have been successfully loaded\n",argv[i]);
 			continue;
@@ -310,9 +374,13 @@ void initialiseErrElems(ADLink anndef){
 void initialiseWithZero(double *matrix, int dim){
 	int i;
 	for (i = 0; i< dim;i++){
-		*(matrix+i) = 1;
+		*(matrix+i) = 0;
 	}
 }
+double genrandWeight(double limit){
+	return (rand()+1.0)/(RAND_MAX+1.0)* (2*limit +1) +limit;
+}
+
  /* uniform distribution, (0..1] */
 double drand(){	
 return (rand()+1.0)/(RAND_MAX+1.0);
@@ -328,8 +396,13 @@ void initialiseBias(double *biasVec,int dim, int srcDim){
 	int i;
 	double randm;
 	for ( i = 0; i<dim;i++){
-		randm = random_normal();
-		biasVec[i] = randm*(1/sqrt(srcDim));
+		/*standard intialisation : setting values according to fan-in*/
+		//randm = random_normal();
+		//biasVec[i] = randm*(1/sqrt(srcDim));
+
+		/* bengio;s proposal for a new tpye of initialisation to ensure 
+			the variance of error derivatives are comparable accross layers*/
+		biasVec[i] = genrandWeight(sqrt(6)/sqrt(dim+srcDim+1));
 	}
 }
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
@@ -341,8 +414,13 @@ void initialiseWeights(double *weights,int dim,int srcDim){
 	//this is not an efficient way of doing but it allows better readibility
 	for (i = 0; i < dim; i++){
 		for(j = 0; j < srcDim;j++){
-			randm = random_normal();
-			*weights = randm * 1/(sqrt(srcDim));
+			/*standard intialisation : setting values according to fan-in*/
+			//randm = random_normal();
+			//*weights = randm * 1/(sqrt(srcDim));
+			
+			/* bengio;s proposal for a new tpye of initialisation to ensure 
+			the variance of error derivatives are comparable accross layers*/
+			*weights = genrandWeight(sqrt(6)/sqrt(dim+srcDim+1));
 			weights = weights + 1;
 		}
 	}
@@ -386,14 +464,14 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	assert(layer->info!= NULL);
 	layer->info->dwFeatMat = malloc(sizeof(double)*numOfElems);
 	layer->info->dbFeaMat = malloc(sizeof(double)*layer->dim);
-	layer->info->updateWeightMat = NULL;
-	layer->info->updateBiasMat = NULL;
+	layer->info->updatedWeightMat = NULL;
+	layer->info->updatedBiasMat = NULL;
 
 	if (momentum > 0) {
-		layer->info->updateWeightMat = malloc(sizeof(double)*numOfElems);
-		layer->info->updateBiasMat = malloc(sizeof(double)*(layer->dim));
-		initialiseWithZero(layer->info->updateWeightMat,numOfElems);
-		initialiseWithZero(layer->info->updateBiasMat,layer->dim);
+		layer->info->updatedWeightMat = malloc(sizeof(double)*numOfElems);
+		layer->info->updatedBiasMat = malloc(sizeof(double)*(layer->dim));
+		initialiseWithZero(layer->info->updatedWeightMat,numOfElems);
+		initialiseWithZero(layer->info->updatedBiasMat,layer->dim);
 	}
 }
 
@@ -420,6 +498,13 @@ void  initialiseDNN(){
 	anndef->errorfunc = errfunc;
 	//initialise ErrElems of layers for back-propagation
 	initialiseErrElems(anndef);
+}
+
+
+void initialise(){
+	printf("initialising DNN\n");
+	initialiseDNN();
+	printf("successfully initialised DNN\n");
 }
 //------------------------------------------------------------------------------------------------
 /*this section of the code implements the  forward propgation of a deep neural net **/
@@ -579,8 +664,8 @@ void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
 				break;
 				case TANH:
 				break;
-				case IDENTITY:
-				break;
+				default:
+					break;
 			}
 		case (SSE):
 			subtractMatrix(layer->errElem->dyFeatMat,anndef->labelMat,layer->dim*BATCHSAMPLES);	
@@ -642,34 +727,47 @@ void findMaxElement(double *matrix, int row, int col, double *vec){
 }
 /** the function calculates the percentage of the data samples correctly labelled by the DNN*/
 void updatateAcc(double *labels, LELink layer,int dataSize){
-	int i, dim, accCount;
-	double *predictions = malloc(sizeof(double)*dataSize);
-	if (layer->dim >1){
-		dim = layer->dim;
-		findMaxElement(layer->feaElem->yfeatMat,dataSize,dim,predictions);
+	int i, dim;
+	double accCount,holdingVal;
+	accCount=0;
+	if (anndef->target==CLASSIFICATION){
+		double *predictions = malloc(sizeof(double)*dataSize);
+		if (layer->dim >1){
+			dim = layer->dim;
+			findMaxElement(layer->feaElem->yfeatMat,dataSize,dim,predictions);
+		}else{
+			perfBinClassf(layer->feaElem->yfeatMat,predictions,dataSize);
+		}
+		
+		for (i = 0; i<dataSize;i++){
+			if (predictions[i] == labels[i]){
+				accCount+=1;
+			}	
+		}
+		free(predictions);
 	}else{
-		perfBinClassf(layer->feaElem->yfeatMat,predictions,dataSize);
-	}
-	accCount = 0;
-	for (i = 0; i<dataSize;i++){
-		if (predictions[i] == labels[i]){
-			accCount+=1;
-		}	
-	}
-	free(predictions);
-	modelSetInfo->crtVal = ((double)accCount)/((double) dataSize);
+		printf("It reaches here\n");
+		subtractMatrix(layer->feaElem->yfeatMat, labels, dataSize);
+		printf("Subtraction successful\n");
+		for (i = 0;i<dataSize;i++){
+			holdingVal = layer->feaElem->yfeatMat[i];
+			accCount+= holdingVal*holdingVal;
+		}
+	}		
+		
+	modelSetInfo->crtVal = accCount/dataSize;
 	printf("The critical value is %f \n", modelSetInfo->crtVal);
 }
 
 /* this function allows the addition of  two matrices or two vectors*/
-void addMatrixOrVec(double *dwFeatMat, double* weights, int dim){
+void addMatrixOrVec(double *weights, double *dwFeatMat,int dim){
 	//blas routine
 	#ifdef CBLAS
-		cblas_daxpy(dim,1,dwFeatMat,1,weights,1);
+		cblas_daxpy(dim,1,weights,1,dwFeatMat,1);
 	#else
 		int i;
 		for (i =0;i<dim;i++){
-			weights[i] = dwFeatMat[i] + weightMat[i];
+			dwFeatMat[i] = dwFeatMat[i] + weights[i];
 		}
 	#endif	
 }
@@ -702,17 +800,17 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 			scaleMatrixOrVec(layer->info->dbFeaMat,lrnrate,layer->dim);
 		}
 		if (momentum > 0){
-			scaleMatrixOrVec(layer->info->updateWeightMat,momentum,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->info->updateBiasMat,momentum,layer->dim);
-			addMatrixOrVec(layer->info->dwFeatMat,layer->info->updateWeightMat,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->info->dbFeaMat,layer->info->updateBiasMat,layer->dim);
+			scaleMatrixOrVec(layer->info->updatedWeightMat,momentum,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->info->updatedBiasMat,momentum,layer->dim);
+			addMatrixOrVec(layer->info->dwFeatMat,layer->info->updatedWeightMat,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->info->dbFeaMat,layer->info->updatedBiasMat,layer->dim);
 			//updating parameters: first we need to descale the lambda from weights and bias
 			if (weightdecay > 0){
 			scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
 			scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
 			}
-			addMatrixOrVec(layer->info->updateWeightMat,layer->weights,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->info->updateBiasMat,layer->bias,layer->dim);
+			addMatrixOrVec(layer->info->updatedWeightMat,layer->weights,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->info->updatedBiasMat,layer->bias,layer->dim);
 		}else{
 			//updating parameters: first we need to descale the lambda from weights and bias
 			if (weightdecay > 0){
@@ -733,7 +831,7 @@ void updateLearningRate(int currentEpochIdx, double *lrnrate){
 		crtvaldiff = modelSetInfo->crtVal - modelSetInfo->prevCrtVal;
 		if (crtvaldiff < threshold){
 			*lrnrate /=2;
-			printf("Learning rate has been halved !! \n");
+		printf("Learning rate has been halved !! \n");
 		}
 	}
 }
@@ -742,10 +840,7 @@ Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate){
 	printf("lrn rate %f\n",lrnrate);
 	if (currentEpochIdx == 0) return TRUE;
 	if (currentEpochIdx >=0 && currentEpochIdx >= maxEpochNum)return FALSE;
-	lrnrate *=-1;
-	if( lrnrate < minLR)return FALSE;
-		
-	
+	if( (-1*lrnrate) < minLR)return FALSE;
 	return TRUE; 
 }
 
@@ -758,27 +853,22 @@ void TrainDNN(){
 	modelSetInfo = malloc (sizeof(MSI));
 	modelSetInfo->crtVal = 0;
 
-	printf("initialising DNN\n");
-	initialiseDNN();
-	printf("successfully initialised DNN\n");
-	
 	//with the initialisation of weights,check how well DNN performs on validation data
-	setBatchSize(validationDataSize);
+	setBatchSize(validationDataSetSize);
 	reinitLayerMatrices(anndef);
 	anndef->layerList[0]->feaElem->xfeatMat = validationData;
 	anndef->labelMat = validationLabelIdx;
 	
 	fwdPassOfANN(anndef);
 	printf("successfully performed forward pass of DNN on validation data\n");
-	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],validationDataSize);
+	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],validationDataSetSize);
+	printf("successfully accumulated counts \n");
 	
-	int count = 0;
 	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
-		count+=1;
 		printf("epoc number %d \n", currentEpochIdx);
 		updateLearningRate(currentEpochIdx,&learningrate);
 		//load training data into the ANN and perform forward pass
-		setBatchSize(trainingDataSize);
+		setBatchSize(trainingDataSetSize);
 		reinitLayerMatrices(anndef);
 		anndef->layerList[0]->feaElem->xfeatMat = inputData;
 		//BATCHSAMPLES =  trainingDataSize;
@@ -791,21 +881,21 @@ void TrainDNN(){
 		
 		//forward pass of DNN on validation data if VD is provided
 		if (validationData != NULL && validationLabelIdx != NULL){
-			setBatchSize(validationDataSize);
+			setBatchSize(validationDataSetSize);
 			reinitLayerMatrices(anndef);
 			anndef->layerList[0]->feaElem->xfeatMat = validationData;
 			anndef->labelMat = validationLabelIdx;
 			//perform forward pass on validation data and check the performance of the DNN on the validation dat set
 			fwdPassOfANN(anndef);
 			modelSetInfo->prevCrtVal = modelSetInfo->crtVal;
-			updatateAcc(validationLabelIdx,anndef->layerList[numLayers-1],validationDataSize);
+			updatateAcc(validationLabelIdx,anndef->layerList[numLayers-1],validationDataSetSize);
 		}else{
 			modelSetInfo->prevCrtVal = modelSetInfo->crtVal;
-			updatateAcc(labels,anndef->layerList[numLayers-1],trainingDataSize);
+			updatateAcc(labels,anndef->layerList[numLayers-1],trainingDataSetSize);
 		}
 		currentEpochIdx+=1;
 	}
-	printf("COUNT is %d \n",count);
+	
 
 
 
@@ -835,11 +925,11 @@ void freeMemoryfromANN(){
 				if (anndef->layerList[i]->info!=NULL){
 					free (anndef->layerList[i]->info->dwFeatMat);
 					free (anndef->layerList[i]->info->dbFeaMat);
-					if(anndef->layerList[i]->info->updateBiasMat !=NULL){
-						free(anndef->layerList[i]->info->updateBiasMat);
+					if(anndef->layerList[i]->info->updatedBiasMat !=NULL){
+						free(anndef->layerList[i]->info->updatedBiasMat);
 					}
-					if (anndef->layerList[i]->info->updateWeightMat!= NULL){
-						free(anndef->layerList[i]->info->updateWeightMat);
+					if (anndef->layerList[i]->info->updatedWeightMat!= NULL){
+						free(anndef->layerList[i]->info->updatedWeightMat);
 					}
 					free (anndef->layerList[i]->info);
 				}
@@ -856,7 +946,11 @@ void freeMemoryfromANN(){
 		free(anndef);
 		free(modelSetInfo);
 	}
-	printf("Finished freeing memory\n");	
+	free(inputData);
+	free(labels);
+	free(validationData);
+	free(validationLabelIdx);
+	printf("Finished freeing memory\n");
 }
 
 /*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
@@ -878,13 +972,13 @@ void unitTests(){
 	validationLabelIdx = lab2;
 
 	double input[] = { 1,3,2,4,3,5,6,8};
-	trainingDataSize = 4;
+	trainingDataSetSize = 4;
 	setBatchSize(4);
 	inputDim = 2;
 	inputData =input;
 
 	double test[] = { 5,3,6,8,7,1,10,8};
-	validationDataSize = 4;
+	validationDataSetSize = 4;
 	validationData = test ;
 
 	
@@ -991,33 +1085,17 @@ void unitTests(){
 //=================================================================================
 
 int main(int argc, char *argv[]){
-	if (argc != 11 && argc != 12 ){
+	if (argc != 11 && argc != 13 ){
 		printf("The program expects a minimum of  5 args and a maximum of 6 args : Eg : -C config \n -S traindatafile \n -L traininglabels \n -v validationdata \n -vl validationdataLabels \n optional argument : -T testData \n ");
 	}
-	//inputDim = 36;
-	//trainingDataSize =151;
-
-	inputDim = 4;
-	trainingDataSize =2;
-	validationDataSize =2;
-	inputData = malloc (sizeof(double)*(inputDim*trainingDataSize));
-	validationData = malloc(sizeof(double)*inputDim*validationDataSize);
-	
-	targetDim = 3;
-	labels = malloc (sizeof(double)*(targetDim*trainingDataSize));
-	validationLabelIdx = malloc(sizeof(double)*(targetDim*validationDataSize));
-
-
-
-
 	parseCMDargs(argc, argv);
-
 	printf("'REACHES HERE'\n" );
 
 
 	int i,j,c;
+	/**
 	c = 0;
-	for (i = 0; i < trainingDataSize;i++){
+	for (i = 0; i < trainingDataSetSize;i++){
 		printf("sample  id %d\n",i);
 		for (j = 0; j < inputDim; j++){
 			printf(" %lf ",inputData[c]);
@@ -1026,22 +1104,23 @@ int main(int argc, char *argv[]){
 		printf("\n");
 	}
 
+
 	c = 0;
-	for (i = 0; i < validationDataSize;i++){
+	for (i = 0; i < validationDataSetSize;i++){
 		printf("sample  id %d\n",i);
-		for (j = 0; j < targetDim; j++){
+		for (j = 0; j < inputDim; j++){
 			printf(" %lf ",validationData[c]);
 			c+=1;
 		}
 		printf("\n");
 	}
 	
-	free(inputData);
-	free (validationData);
+	
 
 	//display loaded labels:
+	
 	c=0;
-	for (i = 0; i < trainingDataSize;i++){
+	for (i = 0; i < trainingDataSetSize;i++){
 		printf("sample  id %d\n",i);
 		printf("labels \n");
 		for (j = 0; j < targetDim; j++){
@@ -1050,11 +1129,44 @@ int main(int argc, char *argv[]){
 		}
 		printf("\n");
 	}
+ **/
+	c=0;
+	for (i = 0; i < validationDataSetSize;i++){
+		printf("sample  id %d\n",i);
+		printf(" validation labels \n");
+		for (j = 0; j < targetDim; j++){
+			printf(" %lf ",validationLabelIdx[c]);
+			c+=1;
+		}
+		printf("\n");
+	}
+	
+ 
+
+	//dislay number of units in each hidden layer
+	for ( i = 0 ;  i < numLayers;i++){
+		printf("number of hidden units in layer %d  = %d  \n",i,hidUnitsPerLayer[i]);
+	}
+
+	//display the activationFunction for each layer:
+	for ( i = 0 ;  i < numLayers;i++){
+		if (actfunLists[i] == SIGMOID){
+			printf( "activation function for layer %i is SIGMOID \n",i);
+		}
+		if (actfunLists[i] == IDENTITY){
+			printf( "activation function for layer %i is IDENTITY \n",i);
+		}
+		if (actfunLists[i] == TANH){
+			printf( "activation function for layer %i is TANH \n",i);
+		}
+		if (actfunLists[i] == SOFTMAX){
+			printf( "activation function for layer %i is SOFTMAX \n",i);
+		}
+	 }		
 
 
 
-	free(labels);
-	free (validationLabelIdx);
+	
 
 	printf("maxEpochNum %d\n",maxEpochNum);
 	printf("initLR %lf \n",initLR );
@@ -1064,11 +1176,17 @@ int main(int argc, char *argv[]){
 	printf("momentum %lf\n",momentum);
 
 	printf("numLayers %d \n",numLayers);
-	printf("trainingDataSize %d\n", trainingDataSize);
-	printf("validationDataSize %d \n",validationDataSize);
+	printf("trainingDataSize %d\n", trainingDataSetSize);
+	printf("validationDataSize %d \n",validationDataSetSize);
 	printf("inputDim %d\n",inputDim);
 	printf("targetDim %d\n",targetDim );
 	printf("numLayers %d\n",numLayers);
+
+	initialiseDNN();
+	//fwdPassOfANN(anndef);
+	TrainDNN();
+
+	freeMemoryfromANN();
 	//unitTests();
 }
 

@@ -22,8 +22,8 @@ double prevCrtVal;
 typedef struct _TrainInfo{
 	double *dwFeatMat; /* dE/dw matrix*/
 	double *dbFeaMat; /* dE/db  vector */
-	double *updateWeightMat; /* stores the velocity in the weight space*/
-	double *updateBiasMat;/* stores the velocity in the bias space*/
+	double *updatedWeightMat; /* stores the velocity in the weight space*/
+	double *updatedBiasMat;/* stores the velocity in the bias space*/
 	double *labelMat;
 }TrainInfo;
 
@@ -66,6 +66,7 @@ void setBatchSize(int sampleSize);
 void reinitLayerMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
 void initialiseWithZero(double * matrix, int dim);
+double genrandWeight(double limit);
 double drand();
 double random_normal();
 void initialiseBias(double *biasVec,int dim, int srcDim);
