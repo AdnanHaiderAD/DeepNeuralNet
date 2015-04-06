@@ -61,9 +61,19 @@ typedef struct _ANNdef{
 	double *labelMat ; /* the target labels : BatchSample by targetDim matrix*/
 }ANNDef;
 
+/**This section of the code deals with parsing Command Line arguments**/
 
+void cleanString(char *Name);
+void loadLabels(double *labelMat,char*filepath,char *datatype);
+void loadMatrix(double *matrix,char *filepath, char *datatype);
+void parseCfg(char * filepath);
+void parseCMDargs(int argc, char *argv[]);
+
+/**This section of the code deals with handling the batch sizes of the data**/
 void setBatchSize(int sampleSize);
-void reinitLayerMatrices(ADLink anndef);
+
+/**this section of the src code deals with initialisation of ANN **/
+void reinitLayerFeaMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
 void initialiseWithZero(double * matrix, int dim);
 double genrandWeight(double limit);
@@ -73,13 +83,18 @@ void initialiseBias(double *biasVec,int dim, int srcDim);
 void initialiseWeights(double *weightMat,int length,int srcDim);
 void initialiseLayer(LELink layer,int i, LELink srcLayer);
 void  initialiseANN();
+void initialise();
 
+/*this section of the code implements the  forward propgation of a deep neural net **/
 double computeTanh(double x);
 double computeSigmoid(double x);
-void computeActOfLayer(LELink layer);
+void computeNonLinearActOfLayer(LELink layer);
 void computeLinearActivation(LELink layer);
+void loadDataintoANN(double *samples, double *labels);
 void fwdPassOfDNN(ADLink anndef);
 
+
+/*This section of the code implements the back-propation algorithm  to compute the error derivatives**/
 void computeDrvAct(double *dyfeat , double *yfeat,int len);
 void computeActivationDrv (LELink layer);
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples);
@@ -87,6 +102,8 @@ void subtractMatrix(double *dyfeat, double* labels, int dim);
 void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 void BackPropBatch(ADLink anndef);
 
+
+/*This section deals with running schedulers to iteratively update the parameters of the neural net**/
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
 void findMaxElement(double *matrix, int row, int col, double *vec);
 void updatateAcc(double *labels, LELink layer,int dataSize);
@@ -96,4 +113,8 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
 void TrainDNN();
+
+
 void freeMemoryfromANN();
+/*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
+void unitTests();

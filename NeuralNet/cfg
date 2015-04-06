@@ -2,13 +2,13 @@ momentum : 0.0000001
 weightdecay : 0.90
 minLR : 0..00023
 threshold : 0.1234
-maxEpochNum : 5
+maxEpochNum : 20
 targetDim : 1
 inputDim : 2
-numLayers : 2
+numLayers : 3
 trainingDataSetSize : 2091
 validationDataSetSize : 2000
-hiddenUnitsPerLayer : 6,1
-activationfunctionsPerLayer : SIGMOID,IDENTITY
+hiddenUnitsPerLayer : 6,4,1
+activationfunctionsPerLayer : SIGMOID,SIGMOID,IDENTITY
 Errfunc : SSE
 

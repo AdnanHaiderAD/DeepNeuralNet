@@ -269,11 +269,11 @@ void parseCfg(char * filepath){
 
 void parseCMDargs(int argc, char *argv[]){
 	int i;
-	if (strcmp(argv[1],"-C")!=0){
+	if (strcmp(argv[2],"-C")!=0){
 		printf("the first argument to ANN must be the config file \n");
 		exit(0);
 	}
-	for (i = 1 ; i < argc;i++){
+	for (i = 2 ; i < argc;i++){
 		if (strcmp(argv[i],"-C") == 0){
 			++i;
 			printf("parsing cfg\n");
@@ -334,7 +334,7 @@ void setBatchSize(int sampleSize){
 //-----------------------------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
 //-----------------------------------------------------------------------------------------------------------
-void reinitLayerMatrices(ADLink anndef){
+void reinitLayerFeaMatrices(ADLink anndef){
 	LELink layer;
 	int i;
 	for (i = 0 ; i< anndef->layerNum;i++){
@@ -343,16 +343,6 @@ void reinitLayerMatrices(ADLink anndef){
 			free(layer->feaElem->yfeatMat);
 			layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
 			layer->feaElem->xfeatMat = (layer->src != NULL) ? layer->src->feaElem->yfeatMat : NULL;
-		}
-	}
-	for (i = 0;i< anndef->layerNum;i++){
-		layer = anndef->layerList[i];
-		if (layer->errElem->dxFeatMat != NULL){
-			free (layer->errElem->dxFeatMat);
-		}
-		layer->errElem->dxFeatMat = (double *) malloc(sizeof(double)* (BATCHSAMPLES*layer->srcDim));	
-		if ( i!=0){
-			layer->src->errElem->dyFeatMat = layer->errElem->dxFeatMat;
 		}
 	}
 }
@@ -503,6 +493,7 @@ void  initialiseDNN(){
 
 void initialise(){
 	printf("initialising DNN\n");
+	setBatchSize(trainingDataSetSize);
 	initialiseDNN();
 	printf("successfully initialised DNN\n");
 }
@@ -518,7 +509,7 @@ double computeSigmoid(double x){
 	return result;
 }
 /*computing non-linear activation*/
-void computeActOfLayer(LELink layer){
+void computeNonLinearActOfLayer(LELink layer){
 	int i ;
 	double sum;
 	switch(layer->role){
@@ -578,6 +569,12 @@ void computeLinearActivation(LELink layer){
 		}
 		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 1, layer->feaElem->yfeatMat, layer->dim);
 	#endif
+}
+
+/**load entire batch into the neural net**/
+void loadDataintoANN(double *samples, double *labels){
+	anndef->layerList[0]->feaElem->xfeatMat = samples;
+	anndef->labelMat = labels;
 }   
 
 /*forward pass*/
@@ -589,7 +586,7 @@ void fwdPassOfANN(ADLink anndef){
 				for (i = 0; i< anndef->layerNum-1;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
-					computeActOfLayer(layer);
+					computeNonLinearActOfLayer(layer);
 				}
 				computeLinearActivation(anndef->layerList[anndef->layerNum-1]);
 				break;
@@ -597,7 +594,7 @@ void fwdPassOfANN(ADLink anndef){
 				for (i = 0; i< anndef->layerNum;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
-					computeActOfLayer(layer);
+					computeNonLinearActOfLayer(layer);
 				}
 				break;	
 	}
@@ -746,10 +743,8 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 		}
 		free(predictions);
 	}else{
-		printf("It reaches here\n");
 		subtractMatrix(layer->feaElem->yfeatMat, labels, dataSize);
-		printf("Subtraction successful\n");
-		for (i = 0;i<dataSize;i++){
+		for (i = 0;i<dataSize*layer->dim;i++){
 			holdingVal = layer->feaElem->yfeatMat[i];
 			accCount+= holdingVal*holdingVal;
 		}
@@ -855,13 +850,12 @@ void TrainDNN(){
 
 	//with the initialisation of weights,check how well DNN performs on validation data
 	setBatchSize(validationDataSetSize);
-	reinitLayerMatrices(anndef);
-	anndef->layerList[0]->feaElem->xfeatMat = validationData;
-	anndef->labelMat = validationLabelIdx;
-	
+	reinitLayerFeaMatrices(anndef);
+	//load  entire batch into neuralNet
+	loadDataintoANN(validationData,validationLabelIdx);
 	fwdPassOfANN(anndef);
 	printf("successfully performed forward pass of DNN on validation data\n");
-	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],validationDataSetSize);
+	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],BATCHSAMPLES);
 	printf("successfully accumulated counts \n");
 	
 	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
@@ -869,10 +863,8 @@ void TrainDNN(){
 		updateLearningRate(currentEpochIdx,&learningrate);
 		//load training data into the ANN and perform forward pass
 		setBatchSize(trainingDataSetSize);
-		reinitLayerMatrices(anndef);
-		anndef->layerList[0]->feaElem->xfeatMat = inputData;
-		//BATCHSAMPLES =  trainingDataSize;
-		anndef->labelMat = labels ;
+		reinitLayerFeaMatrices(anndef);
+		loadDataintoANN(inputData,labels);
 		fwdPassOfANN(anndef);
 		
 		// run backpropagation and update the parameters:
@@ -882,10 +874,9 @@ void TrainDNN(){
 		//forward pass of DNN on validation data if VD is provided
 		if (validationData != NULL && validationLabelIdx != NULL){
 			setBatchSize(validationDataSetSize);
-			reinitLayerMatrices(anndef);
-			anndef->layerList[0]->feaElem->xfeatMat = validationData;
-			anndef->labelMat = validationLabelIdx;
+			reinitLayerFeaMatrices(anndef);
 			//perform forward pass on validation data and check the performance of the DNN on the validation dat set
+			loadDataintoANN(validationData,validationLabelIdx);
 			fwdPassOfANN(anndef);
 			modelSetInfo->prevCrtVal = modelSetInfo->crtVal;
 			updatateAcc(validationLabelIdx,anndef->layerList[numLayers-1],validationDataSetSize);
@@ -902,7 +893,6 @@ void TrainDNN(){
 
 }
 //========================================================================================================
-//Note : In the current architecture, I dont specially allocate memory to the ANN to hold labels and input
 void freeMemoryfromANN(){
 	int i;
 	printf("Start freeing memory\n");
@@ -1085,7 +1075,7 @@ void unitTests(){
 //=================================================================================
 
 int main(int argc, char *argv[]){
-	if (argc != 11 && argc != 13 ){
+	if (argc != 12 && argc != 14 ){
 		printf("The program expects a minimum of  5 args and a maximum of 6 args : Eg : -C config \n -S traindatafile \n -L traininglabels \n -v validationdata \n -vl validationdataLabels \n optional argument : -T testData \n ");
 	}
 	parseCMDargs(argc, argv);
@@ -1182,7 +1172,7 @@ int main(int argc, char *argv[]){
 	printf("targetDim %d\n",targetDim );
 	printf("numLayers %d\n",numLayers);
 
-	initialiseDNN();
+	initialise();
 	//fwdPassOfANN(anndef);
 	TrainDNN();
 
