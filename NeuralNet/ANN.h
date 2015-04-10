@@ -111,7 +111,7 @@ void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim);
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
-Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
+Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate,MSI *modelSetInfo);
 void TrainDNN();
 
 

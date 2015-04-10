@@ -633,6 +633,7 @@ void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsample
 		}
 		//multiply node by batchsamples with batchsamples by 1
 		cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
+		free(ones);
 	#endif
 }
 
@@ -727,6 +728,7 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 	int i, dim;
 	double accCount,holdingVal;
 	accCount=0;
+	/**classification**/
 	if (anndef->target==CLASSIFICATION){
 		double *predictions = malloc(sizeof(double)*dataSize);
 		if (layer->dim >1){
@@ -742,7 +744,9 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 			}	
 		}
 		free(predictions);
-	}else{
+	}
+	/**regression**/
+	else{
 		subtractMatrix(layer->feaElem->yfeatMat, labels, dataSize);
 		for (i = 0;i<dataSize*layer->dim;i++){
 			holdingVal = layer->feaElem->yfeatMat[i];
@@ -751,7 +755,7 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 	}		
 		
 	modelSetInfo->crtVal = accCount/dataSize;
-	printf("The critical value is %f \n", modelSetInfo->crtVal);
+	printf("The critical value is %lf \n", modelSetInfo->crtVal);
 }
 
 /* this function allows the addition of  two matrices or two vectors*/
@@ -791,8 +795,8 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 			addMatrixOrVec(layer->bias,layer->info->dbFeaMat,layer->dim);
 		}
 		if (lrnrate > 0){
-			scaleMatrixOrVec(layer->info->dwFeatMat,lrnrate,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->info->dbFeaMat,lrnrate,layer->dim);
+			scaleMatrixOrVec(layer->info->dwFeatMat,-1*lrnrate,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->info->dbFeaMat,-1*lrnrate,layer->dim);
 		}
 		if (momentum > 0){
 			scaleMatrixOrVec(layer->info->updatedWeightMat,momentum,layer->dim*layer->srcDim);
@@ -821,21 +825,32 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 void updateLearningRate(int currentEpochIdx, double *lrnrate){
 	double crtvaldiff;
 	if (currentEpochIdx == 0) {
-		*lrnrate = (-1)* initLR;
+		*lrnrate =  initLR;
 	}else if (modelSetInfo !=NULL){
 		crtvaldiff = modelSetInfo->crtVal - modelSetInfo->prevCrtVal;
-		if (crtvaldiff < threshold){
+		if (target==CLASSIFICATION){
+			if (crtvaldiff < threshold){
+				*lrnrate /=2;
+				printf("Learning rate has been halved !! \n");
+			}
+		}else if(crtvaldiff >0){
 			*lrnrate /=2;
-		printf("Learning rate has been halved !! \n");
+			printf("Learning rate has been halved !! \n");
 		}
+		
 	}
 }
 
-Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate){
+Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate,MSI* modelSetInfo){
 	printf("lrn rate %f\n",lrnrate);
 	if (currentEpochIdx == 0) return TRUE;
 	if (currentEpochIdx >=0 && currentEpochIdx >= maxEpochNum)return FALSE;
-	if( (-1*lrnrate) < minLR)return FALSE;
+	if(lrnrate< minLR)return FALSE;
+	if(target==REGRESSION){
+		if ((modelSetInfo->crtVal/modelSetInfo->prevCrtVal)>=0.98 && currentEpochIdx>=10){
+		return FALSE;
+		}
+	}
 	return TRUE; 
 }
 
@@ -858,7 +873,7 @@ void TrainDNN(){
 	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],BATCHSAMPLES);
 	printf("successfully accumulated counts \n");
 	
-	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
+	while(terminateSchedNotTrue(currentEpochIdx,learningrate,modelSetInfo)){
 		printf("epoc number %d \n", currentEpochIdx);
 		updateLearningRate(currentEpochIdx,&learningrate);
 		//load training data into the ANN and perform forward pass
@@ -1119,7 +1134,7 @@ int main(int argc, char *argv[]){
 		}
 		printf("\n");
 	}
- **/
+ **
 	c=0;
 	for (i = 0; i < validationDataSetSize;i++){
 		printf("sample  id %d\n",i);
@@ -1130,7 +1145,7 @@ int main(int argc, char *argv[]){
 		}
 		printf("\n");
 	}
-	
+	**/
  
 
 	//dislay number of units in each hidden layer
