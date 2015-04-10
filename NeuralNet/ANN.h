@@ -1,16 +1,20 @@
 
+typedef void * Ptr;
 typedef enum {FALSE, TRUE} Boolean;
 typedef enum {XENT, SSE} ObjFuncKind;
 typedef enum {REGRESSION, CLASSIFICATION} OutFuncKind;
 typedef enum {HIDDEN,INPUT,OUTPUT} LayerRole;
 typedef enum {SIGMOID,IDENTITY,TANH,SOFTMAX} ActFunKind;
 
+
 typedef struct _LayerElem *LELink;
 typedef struct _ANNdef *ADLink;
 typedef struct _FeatElem *FELink;
 typedef struct _ErrorElem *ERLink;
 typedef struct _TrainInfo *TRLink;
+typedef struct _GaussNewtonProductInfo *GNProdInfo;
 typedef struct _MSI *MSLink;
+
 
 
 /*model set info -this struct is needed to compare the error on the validation dataset between two epochs*/
@@ -18,6 +22,25 @@ typedef struct _MSI{
 double crtVal;
 double prevCrtVal;
 }MSI;
+
+/**this struct stores the search directions,residues and dw for each iteration of CG**/
+typedef struct _ConjugateGradientInfo{
+   double *delweightsUpdate;
+   double *delbiasUpdate;
+   double *residueUpdateWeights;
+   double * residueUpdateBias;
+   double *searchDirectionUpdateWeights;
+   double * searchDirectionUpdateBias;
+ }ConjuageGradientInfo;
+
+
+
+/** this struct stores the directional error derivatives with respect to weights and biases**/
+typedef struct _GaussNewtonProdInfo{
+	double *vweights;
+   	double *vbiases;
+   	double *Ractivations;
+}GaussNewtonProductInfo ;
 
 typedef struct _TrainInfo{
 	double *dwFeatMat; /* dE/dw matrix*/
@@ -49,7 +72,8 @@ typedef struct _LayerElem{
 	double *bias; /* the bias vector */
 	FELink feaElem; /* stores the  input activations coming into the layer as well the output activations going out from the layer */
 	ERLink errElem;
-	TRLink info;
+	TRLink traininfo;/*struct that stores the error derivatives with respect to weights and biases */
+	GNProdInfo gnInfo;
 }LayerElem;
 
 /*structure for ANN*/
@@ -73,6 +97,7 @@ void parseCMDargs(int argc, char *argv[]);
 void setBatchSize(int sampleSize);
 
 /**this section of the src code deals with initialisation of ANN **/
+void setUpForHF(ADLink anndef);
 void reinitLayerFeaMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
 void initialiseWithZero(double * matrix, int dim);
@@ -99,8 +124,8 @@ void computeDrvAct(double *dyfeat , double *yfeat,int len);
 void computeActivationDrv (LELink layer);
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples);
 void subtractMatrix(double *dyfeat, double* labels, int dim);
-void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef );
-void BackPropBatch(ADLink anndef);
+void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
+void backPropBatch(ADLink anndef);
 
 
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
@@ -112,7 +137,7 @@ void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
-void TrainDNN();
+void TrainDNNGD();
 
 
 void freeMemoryfromANN();

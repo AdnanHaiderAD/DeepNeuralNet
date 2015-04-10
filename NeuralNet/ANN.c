@@ -33,7 +33,9 @@ static double * validationLabelIdx;
 static int trainingDataSetSize;
 static int validationDataSetSize;
 
+
 /*configurations for DNN architecture*/
+static Boolean doHF;
 static MSLink modelSetInfo = NULL;
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
@@ -334,6 +336,14 @@ void setBatchSize(int sampleSize){
 //-----------------------------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
 //-----------------------------------------------------------------------------------------------------------
+void setUpForHF(ADLink anndef){
+	LELink layer;
+	int i;
+	for (i = 0; i<anndef->layerNum;i++){
+		layer = anndef->layerList[i];
+		layer->gnInfo = malloc (sizeof(GaussNewtonProductInfo));
+	}
+}
 void reinitLayerFeaMatrices(ADLink anndef){
 	LELink layer;
 	int i;
@@ -449,19 +459,20 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	assert(layer->feaElem!=NULL);
 	layer->feaElem->yfeatMat = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
 	layer->feaElem->xfeatMat = (srcLayer != NULL) ? srcLayer->feaElem->yfeatMat : NULL;
+	
 	//intialise traininfo
-	layer->info = (TRLink) malloc(sizeof(TrainInfo));
-	assert(layer->info!= NULL);
-	layer->info->dwFeatMat = malloc(sizeof(double)*numOfElems);
-	layer->info->dbFeaMat = malloc(sizeof(double)*layer->dim);
-	layer->info->updatedWeightMat = NULL;
-	layer->info->updatedBiasMat = NULL;
+	layer->traininfo = (TRLink) malloc(sizeof(TrainInfo));
+	assert(layer->traininfo!= NULL);
+	layer->traininfo->dwFeatMat = malloc(sizeof(double)*numOfElems);
+	layer->traininfo->dbFeaMat = malloc(sizeof(double)*layer->dim);
+	layer->traininfo->updatedWeightMat = NULL;
+	layer->traininfo->updatedBiasMat = NULL;
 
 	if (momentum > 0) {
-		layer->info->updatedWeightMat = malloc(sizeof(double)*numOfElems);
-		layer->info->updatedBiasMat = malloc(sizeof(double)*(layer->dim));
-		initialiseWithZero(layer->info->updatedWeightMat,numOfElems);
-		initialiseWithZero(layer->info->updatedBiasMat,layer->dim);
+		layer->traininfo->updatedWeightMat = malloc(sizeof(double)*numOfElems);
+		layer->traininfo->updatedBiasMat = malloc(sizeof(double)*(layer->dim));
+		initialiseWithZero(layer->traininfo->updatedWeightMat,numOfElems);
+		initialiseWithZero(layer->traininfo->updatedBiasMat,layer->dim);
 	}
 }
 
@@ -488,6 +499,7 @@ void  initialiseDNN(){
 	anndef->errorfunc = errfunc;
 	//initialise ErrElems of layers for back-propagation
 	initialiseErrElems(anndef);
+	if (doHF) setUpForHF(anndef);
 }
 
 
@@ -599,6 +611,10 @@ void fwdPassOfANN(ADLink anndef){
 				break;	
 	}
 }
+
+
+
+
 //------------------------------------------------------------------------------------------------------
 /*This section of the code implements the back-propation algorithm  to compute the error derivatives*/
 //-------------------------------------------------------------------------------------------------------
@@ -649,7 +665,7 @@ void subtractMatrix(double *dyfeat, double* labels, int dim){
 	#endif
 }
 
-void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
+void calcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
 	switch(anndef->errorfunc){
 		case (XENT):
 			switch(layer->actfuncKind){
@@ -670,8 +686,9 @@ void CalcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
 	}
 }
 
-void BackPropBatch(ADLink anndef){
-	int i,c,j,k;
+/**function computes the error derivatives with respect to the weights and biases of the neural net*/
+void backPropBatch(ADLink anndef){
+	int i;
 	LELink layer;
 	for (i = (anndef->layerNum-1); i>=0;i--){
 		layer = anndef->layerList[i];
@@ -687,12 +704,82 @@ void BackPropBatch(ADLink anndef){
 		//compute dxfeatMat: the result  should be an array [ b1 b2..] where b1 is one of dim srcDim
 		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, layer->srcDim, BATCHSAMPLES, layer->dim, 1, layer->weights, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0,layer->errElem->dxFeatMat,layer->srcDim);
 		//compute derivative with respect to weights: the result  should be an array of array of [ n1 n2] where n1 is of length srcDim
-		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, layer->srcDim, layer->dim, BATCHSAMPLES, 1, layer->feaElem->xfeatMat, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0, layer->info->dwFeatMat, layer->srcDim);
+		cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, layer->srcDim, layer->dim, BATCHSAMPLES, 1, layer->feaElem->xfeatMat, layer->srcDim, layer->errElem->dyFeatMat, layer->dim, 0, layer->traininfo->dwFeatMat, layer->srcDim);
 		//compute derivative with respect to bias: the result should an array of size layer->dim ..we just sum the columns of dyFeatMat
-		sumColsOfMatrix(layer->errElem->dyFeatMat,layer->info->dbFeaMat,layer->dim,BATCHSAMPLES);
+		sumColsOfMatrix(layer->errElem->dyFeatMat,layer->traininfo->dbFeaMat,layer->dim,BATCHSAMPLES);
 		#endif
 	}
-}	
+}
+
+//----------------------------------------------------------------------------------------------------------
+/**this segment of the code is reponsible for accumulating the gradients **/
+//---------------------------------------------------------------------------------------------------------
+void setHook(Ptr m, Ptr ptr){
+	Ptr *p;
+	printf("hello\n");
+   p = (Ptr *) m; 
+   printf("hello casting success\n");
+   p -= 2; *p = ptr;
+}
+
+Ptr getHook(Ptr m){
+	Ptr *p;
+   p = (Ptr *) m; p -=2; return *p;
+}
+
+void accumulateLayerGradient(LELink layer){
+	double *dweights;
+	double *dbiases;
+
+	dweights = malloc(sizeof(layer->traininfo->dwFeatMat));
+	dbiases = malloc(sizeof(layer->traininfo->dbFeaMat));
+	setHook(layer->traininfo->dwFeatMat,dweights);
+	setHook(layer->traininfo->dbFeaMat,dbiases);
+}
+
+void accumulateGradientsofANN(ADLink anndef){
+	int i;
+	LELink layer;
+	for (i = 0; i< anndef->numLayers;i++){
+		layer = anndef->layerList[i];
+		accumulateLayerGradient(layer);
+	}
+}
+
+
+
+
+//-----------------------------------------------------------------------------------------------------------------------------
+/*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
+//---------------------------------------------------------------------------------------------------------------------------------
+/**given a vector in parameteric space, this function copies the the segment of the vectors that aligns with the parameters of the given layer*/
+void setParameterDirections(double *weights, double* bias, LELink layer){
+	assert(layer->gnInfo !=NULL):
+	
+	layer->gnInfo->vweights = malloc(sizeof(double)*(layer->dim*layer->srcDim));
+	layer->gnInfo->vbiases = malloc(sizeof(double)* layer->dim);
+	#ifdef CBLAS
+	cblas_dcopy(layer->dim*layer->srcDim,weights,1,layer->gnInfo->vweights,1);
+	cblas_dcopy(layer->dim,bias,1,layer->gnInfo_.vbiases,1);
+	#else
+	/**CPU Version**/
+	int i
+	for (i = 0; i<layer->dim*layer->srcDim,i++){
+		layer->gnInfo->vweights[i] = weights[i];
+	}
+	for (i = 0; i<layer->dim;i++){
+		layer->gnInfo->vbiases[i] = biases[i];
+	}	
+	#endif
+}
+
+
+
+
+
+
+
+
 
 
 //----------------------------------------------------------------------------------------------------
@@ -787,33 +874,33 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 		if (weightdecay > 0){
 			scaleMatrixOrVec(layer->weights,weightdecay,layer->dim*layer->srcDim);
 			scaleMatrixOrVec(layer->bias,weightdecay,layer->dim);
-			addMatrixOrVec(layer->weights,layer->info->dwFeatMat,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->bias,layer->info->dbFeaMat,layer->dim);
+			addMatrixOrVec(layer->weights,layer->traininfo->dwFeatMat,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->bias,layer->traininfo->dbFeaMat,layer->dim);
 		}
 		if (lrnrate > 0){
-			scaleMatrixOrVec(layer->info->dwFeatMat,lrnrate,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->info->dbFeaMat,lrnrate,layer->dim);
+			scaleMatrixOrVec(layer->traininfo->dwFeatMat,lrnrate,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->traininfo->dbFeaMat,lrnrate,layer->dim);
 		}
 		if (momentum > 0){
-			scaleMatrixOrVec(layer->info->updatedWeightMat,momentum,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->info->updatedBiasMat,momentum,layer->dim);
-			addMatrixOrVec(layer->info->dwFeatMat,layer->info->updatedWeightMat,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->info->dbFeaMat,layer->info->updatedBiasMat,layer->dim);
+			scaleMatrixOrVec(layer->traininfo->updatedWeightMat,momentum,layer->dim*layer->srcDim);
+			scaleMatrixOrVec(layer->traininfo->updatedBiasMat,momentum,layer->dim);
+			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->traininfo->updatedWeightMat,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->traininfo->updatedBiasMat,layer->dim);
 			//updating parameters: first we need to descale the lambda from weights and bias
 			if (weightdecay > 0){
 			scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
 			scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
 			}
-			addMatrixOrVec(layer->info->updatedWeightMat,layer->weights,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->info->updatedBiasMat,layer->bias,layer->dim);
+			addMatrixOrVec(layer->traininfo->updatedWeightMat,layer->weights,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->traininfo->updatedBiasMat,layer->bias,layer->dim);
 		}else{
 			//updating parameters: first we need to descale the lambda from weights and bias
 			if (weightdecay > 0){
 				scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
 				scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
 			}
-			addMatrixOrVec(layer->info->dwFeatMat,layer->weights,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->info->dbFeaMat,layer->bias,layer->dim);
+			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->weights,layer->dim*layer->srcDim);
+			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->bias,layer->dim);
 		}
 	}
 }
@@ -839,7 +926,7 @@ Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate){
 	return TRUE; 
 }
 
-void TrainDNN(){
+void TrainDNNGD(){
 	int currentEpochIdx;
 	double learningrate;
 	
@@ -868,7 +955,7 @@ void TrainDNN(){
 		fwdPassOfANN(anndef);
 		
 		// run backpropagation and update the parameters:
-		BackPropBatch(anndef);
+		backPropBatch(anndef);
 		updateNeuralNetParams(anndef,learningrate,momentum,weightdecay);
 		
 		//forward pass of DNN on validation data if VD is provided
@@ -886,12 +973,48 @@ void TrainDNN(){
 		}
 		currentEpochIdx+=1;
 	}
-	
+}
 
+//--------------------------------------------------------------------------------------------------------
+/**This portion of the code implements HF full batch training**/
 
-
+void conjugateGradient(Boolean firstEverRun){
 
 }
+
+void TrainDNNHF(){
+	int currentEpochIdx;
+	//with the initialisation of weights,check how well DNN performs on validation data
+	setBatchSize(validationDataSetSize);
+	reinitLayerFeaMatrices(anndef);
+	//load  entire batch into neuralNet
+	loadDataintoANN(validationData,validationLabelIdx);
+	fwdPassOfANN(anndef);
+	printf("successfully performed forward pass of DNN on validation data\n");
+	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],BATCHSAMPLES);
+	printf("successfully accumulated counts \n");
+
+	while(currentEpochIdx<=maxEpochNum){
+		/**Step 1: Compute and accumulate gradients**/
+		//load training data into the ANN and perform forward pass
+		setBatchSize(trainingDataSetSize);
+		reinitLayerFeaMatrices(anndef);
+		loadDataintoANN(inputData,labels);
+		fwdPassOfANN(anndef);
+		// run backpropagation and update the parameters:
+		backPropBatch(anndef);
+		accumulateGradientsofANN(anndef);
+		if (currentEpochIdx == 0){
+			conjugateGradient(TRUE);
+		}else{
+			conjugateGradient(FALSE);
+		}
+
+
+	}
+
+}
+
 //========================================================================================================
 void freeMemoryfromANN(){
 	int i;
@@ -912,16 +1035,16 @@ void freeMemoryfromANN(){
 					}
 					free(anndef->layerList[i]->errElem);
 				}
-				if (anndef->layerList[i]->info!=NULL){
-					free (anndef->layerList[i]->info->dwFeatMat);
-					free (anndef->layerList[i]->info->dbFeaMat);
-					if(anndef->layerList[i]->info->updatedBiasMat !=NULL){
-						free(anndef->layerList[i]->info->updatedBiasMat);
+				if (anndef->layerList[i]->traininfo!=NULL){
+					free (anndef->layerList[i]->traininfo->dwFeatMat);
+					free (anndef->layerList[i]->traininfo->dbFeaMat);
+					if(anndef->layerList[i]->traininfo->updatedBiasMat !=NULL){
+						free(anndef->layerList[i]->traininfo->updatedBiasMat);
 					}
-					if (anndef->layerList[i]->info->updatedWeightMat!= NULL){
-						free(anndef->layerList[i]->info->updatedWeightMat);
+					if (anndef->layerList[i]->traininfo->updatedWeightMat!= NULL){
+						free(anndef->layerList[i]->traininfo->updatedWeightMat);
 					}
-					free (anndef->layerList[i]->info);
+					free (anndef->layerList[i]->traininfo);
 				}
 				if (anndef->layerList[i]->weights !=NULL){
 					free (anndef->layerList[i]->weights);
@@ -929,6 +1052,10 @@ void freeMemoryfromANN(){
 				if (anndef->layerList[i]->bias !=NULL){
 					free (anndef->layerList[i]->bias);
 				}
+				if(anndef->layerList[i]->gnInfo != NULL){
+					free (anndef->layerList[i]->gnInfo);
+				}
+
 				free (anndef->layerList[i]);
 			}
 		}

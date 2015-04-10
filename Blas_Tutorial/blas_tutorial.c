@@ -8,6 +8,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+typedef void * Ptr;
+
 typedef enum {SIGMOID,IDENTITY,TANH} ActFunKind;
 
 double computeTanh(double x);
@@ -19,8 +21,16 @@ void initialiseWeights(double *weightMat,int length,int srcDim);
 void initialiseBias(double *biasVec,int dim, int srcDim);
 double random_normal() ;
 double drand()  ;
+void setHook(Ptr m, Ptr ptr);
+Ptr getHook(Ptr m);
 
 static double randSeed;
+typedef struct _hookStruct{
+	double *matrix;
+	int id;
+}Hook;
+
+
 
 
 
@@ -37,6 +47,58 @@ int main(){
 	double weights[] ={ 2, 0,0,2,1,0,0,2};
 	double *weightmat;
 	double *biasVec;
+	Hook *hook;
+	Hook *hook2;
+
+	/**testing string formating */
+	char str[40] = "hmm1/HER$.acc";
+	sprintf(str,"%d",10);
+	printf("str is %s \n",str);	
+
+
+
+
+	//---------------------------------------------------------
+	double A3[] = { 0.11, 0.12, 0.13,
+                0.21, 0.22, 0.23 };
+   double *hookmat;             
+	/** testing pointer hooks-**/
+   printf("hello 1\n"); 
+	hook = malloc(sizeof(Hook)); 
+	hook->matrix = A3;
+   printf("hello 12\n");
+   hookmat = malloc(sizeof(weights));
+   cblas_dcopy(8,weights,1,hookmat,1);
+   for (i =0 ; i< 8;i++){
+   	printf("testing hooks values %d %f \n",i,*(hookmat+i));
+   }
+   free(hookmat);
+
+	printf("hello 2 \n");
+   hook->id = 2;
+   setHook(A3, A3);
+   printf("hello 3 \n"); 
+   hookmat = getHook(A3);
+   A3[1] =1;
+   for (i =0 ; i< 6;i++){
+   	printf("testing hooks values %d %f \n",i,*(hookmat+i));
+   }
+   free(hook);
+   //free(hook2->matrix);
+
+//----------------------------------------------------------
+
+
+
+
+
+
+
+	//--------------------------------------------------------
+
+
+
+
 
 	dim = 4;
 	srcDim = 2;
@@ -57,12 +119,13 @@ int main(){
   float A2[] ={ 1.0 ,0 ,0, 0,1,0};              
   float ones[] ={1,1,1};
   float sumCOls[] ={ 0,0};
+  float test[] = { 1,0,1};
 
   int ldb = 2;
   
-  float B[] = { 1011, 1012,
-                1021, 1022,
-                1031, 1032 };
+  float B[] = { 1, 2,
+                3, 4,
+                5, 6 };
 
   int ldc = 2;
 
@@ -72,14 +135,26 @@ int main(){
 
   /* Compute C = A B */
 
+/** when we say col major and cblasTrans and cblas noTrans then we multiply B*A where A is col-major but B is row-major*/
   cblas_sgemm (CblasColMajor, 
-               CblasNoTrans, CblasTrans, 2, 2, 3,
-               1.0, A1,2, B, 2, 0.0, C, 2);
+               CblasTrans, CblasNoTrans, 3, 3, 2,
+               1.0, A1,2, B, 2, 0.0, C, 3);
 
   printf ("[ %g, %g\n", C[0], C[1]);
   printf ("  %g, %g ]\n", C[2], C[3]);
-  printf ("  %g, %g ]\n", C[4], C[5]);
+  printf ("  %g, %g \n", C[4], C[5]);
+  printf (" %g, %g\n", C[6], C[7]);
+  printf ("  %g ]\n", C[8]);
+  
+/**
 
+  cblas_saxpy(3,-1,ones,1,test,1);
+  printf (" T %g, %g  %g ]\n", test[0], test[1],test[2]);
+
+  cblas_sscal(3,2.5,ones,1);
+  printf (" SC %g, %g  %g ]\n", ones[0], ones[1],ones[2]);
+
+  
   cblas_sgemv(CblasRowMajor,CblasNoTrans, 2,3,1,A1,3,ones,1,0,sumCOls,1);
   printf ("[ %g, %g\n", sumCOls[0], sumCOls[1]);
   //printf ("[ %g, %g\n", sumCOls[2], sumCOls[3]);
@@ -88,7 +163,7 @@ int main(){
 
 
 
-
+**/
 
 
 
@@ -99,7 +174,7 @@ int main(){
 
 
 	//=======================================================
-   /*  W is 4 by 2 and X is 3 by 2 so X *W^T be 3 by 4*/
+   /*  W is 4 by 2 and X is 3 by 2 so X *W^T be 3 by 4
 	float W [] ={ 1, 1, 0,
 						0,0,0};
 	float X[] ={ 0, 1,
@@ -140,9 +215,9 @@ int main(){
 	
 	free((ptr-1));
 	
-
+**/
 //------------------------------------------------------------------
-	/**testing the initialisation of weights and bias*/
+	/**testing the initialisation of weights and bias
 	printf("This is ok here 1\n");
 	weightmat =malloc(sizeof(double)*(3*5));
 	printf("This is ok here 2\n");
@@ -174,7 +249,7 @@ int main(){
 	double test_vec[] ={ 3 ,3,3};
 
 	
-	/*matrix*/
+	
 	double A[] ={ 3, 0, 0,0,3,0,0,0,3};
 	
 
@@ -184,12 +259,12 @@ int main(){
 
 	printf("reaches here 1\n");
 
-	
+	**/
 
 
 	//-----------------------------------------------------------
 
-	/*testing for memory leaks*/
+	/*testing for memory leaks
 	arr = (double *) malloc(sizeof(double)*3);
 	testfunct(vector);
 	for(i = 0; i<srcDim;i++){
@@ -231,6 +306,7 @@ int main(){
 
 
 	/* y = a A*x + by*/
+	/**
 	cblas_dgemv(CblasRowMajor,CblasNoTrans,3,3,1,A,3,vector,1,1,vector,1);
 	//cblas_dscal(3, 4.323, vector, 1);
 
@@ -242,6 +318,7 @@ int main(){
 	printf("The second dot product value is %lf\n", result);
 	printf("The norm of the first vector is %lf\n",norm);
 	printf("the value should 4  so %lf\n",vector[0]);
+	**/
 
  }
 
@@ -307,8 +384,6 @@ void initialiseWeights(double *weightMat,int length,int srcDim){
 	
 }
 
-
-
 void testfunct(double *v){
 	int i;
 	
@@ -317,5 +392,19 @@ void testfunct(double *v){
 		arr[i] = v[i];
 	}
 
-
 }
+
+void setHook(Ptr m, Ptr ptr){
+	Ptr *p;
+	printf("hello\n");
+   p = (Ptr *) m; 
+   printf("hello casting success\n");
+   p -= 2; *p = ptr;
+}
+
+Ptr getHook(Ptr m){
+	Ptr *p;
+   p = (Ptr *) m; p -=2; return *p;
+}
+
+
