@@ -3,7 +3,7 @@ typedef void * Ptr;
 typedef enum {FALSE, TRUE} Boolean;
 typedef enum {XENT, SSE} ObjFuncKind;
 typedef enum {REGRESSION, CLASSIFICATION} OutFuncKind;
-typedef enum {HIDDEN,INPUT,OUTPUT} LayerRole;
+typedef enum {HIDDEN,OUTPUT} LayerRole;
 typedef enum {SIGMOID,IDENTITY,TANH,SOFTMAX} ActFunKind;
 
 
@@ -45,8 +45,8 @@ typedef struct _GaussNewtonProdInfo{
 typedef struct _TrainInfo{
 	double *dwFeatMat; /* dE/dw matrix*/
 	double *dbFeaMat; /* dE/db  vector */
-	double *updatedWeightMat; /* stores the velocity in the weight space*/
-	double *updatedBiasMat;/* stores the velocity in the bias space*/
+	double *updatedWeightMat; /* stores the velocity in the weight space or accumulates  gradeints of weights*/
+	double *updatedBiasMat;/* stores the velocity in the bias space  or accumulates gradients of biases*/
 	double *labelMat;
 }TrainInfo;
 
@@ -85,17 +85,21 @@ typedef struct _ANNdef{
 	double *labelMat ; /* the target labels : BatchSample by targetDim matrix*/
 }ANNDef;
 
+//---------------------------------------------------------------------------------------
 /**This section of the code deals with parsing Command Line arguments**/
-
 void cleanString(char *Name);
 void loadLabels(double *labelMat,char*filepath,char *datatype);
 void loadMatrix(double *matrix,char *filepath, char *datatype);
 void parseCfg(char * filepath);
 void parseCMDargs(int argc, char *argv[]);
 
+//---------------------------------------------------------------------------------------
 /**This section of the code deals with handling the batch sizes of the data**/
 void setBatchSize(int sampleSize);
+/**load entire batch into the neural net**/
+void loadDataintoANN(double *samples, double *labels);
 
+//---------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
 void setUpForHF(ADLink anndef);
 void reinitLayerFeaMatrices(ADLink anndef);
@@ -103,35 +107,70 @@ void initialiseErrElems(ADLink anndef);
 void initialiseWithZero(double * matrix, int dim);
 double genrandWeight(double limit);
 double drand();
+/* performing the Box Muller transform to map two numbers 
+generated from a uniform distribution to a number from a normal distribution centered at 0 with standard deviation 1 */
 double random_normal();
 void initialiseBias(double *biasVec,int dim, int srcDim);
+/*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
+to be inversely proportional to the sqrt(fanin)
+*/ 
 void initialiseWeights(double *weightMat,int length,int srcDim);
 void initialiseLayer(LELink layer,int i, LELink srcLayer);
-void  initialiseANN();
+void  initialiseDNN();
 void initialise();
 
-/*this section of the code implements the  forward propgation of a deep neural net **/
+//----------------------------------------------------------------------------------------
+/*this section of the code implements the  forward propagation of a deep neural net **/
 double computeTanh(double x);
 double computeSigmoid(double x);
 void computeNonLinearActOfLayer(LELink layer);
+/* Yfeat is batchSamples by nodeNum matrix(stored as row major)  = X^T(row-major)-batch samples by feaMat * W^T(column major) -feaMat By nodeNum */
 void computeLinearActivation(LELink layer);
 void loadDataintoANN(double *samples, double *labels);
 void fwdPassOfDNN(ADLink anndef);
 
-
+//----------------------------------------------------------------------------------------
 /*This section of the code implements the back-propation algorithm  to compute the error derivatives**/
 void computeDrvAct(double *dyfeat , double *yfeat,int len);
 void computeActivationDrv (LELink layer);
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples);
+/**compute del^2L J where del^2L is the hessian of the cross-entropy softmax with respect to output acivations **/ 
+void computeLossHessSoftMax(LELink layer);
+/*compute del^2L*J where L can be any convex loss function**/
+void computeHessOfLossFunc(LELink layer, ADLink anndef);
 void subtractMatrix(double *dyfeat, double* labels, int dim);
 void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
+/**function computes the error derivatives with respect to the weights and biases of the neural net*/
 void backPropBatch(ADLink anndef);
 
 
+//----------------------------------------------------------------------------------------------------------
+/**this segment of the code is reponsible for accumulating peviously computed  gradients **/
+void setHook(Ptr m, Ptr ptr);
+Ptr getHook(Ptr m);
+void accumulateLayerGradient(LELink layer,double weight);
+void accumulateGradientsofANN(ADLink anndef);
+
+//------------------------------------------------------------------------------------------------------------
+/*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
+void setParameterDirections(double *weights, double* bias, LELink layer);
+/**this function computes R(z) = h'(a)R(a)  : we assume h'a is computed during computation of gradient**/
+void updateRactivations(LELink layer);
+/** this function compute \sum wji R(zi)-previous layer and adds it to R(zj)**/
+void computeRactivations(LELink layer);
+/**this function computes sum vji xi */
+void computeVweightsProjection(LELink layer);
+void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
+void computeDirectionalErrDerivativeofANN(ADLink anndef);
+
+//-----------------------------------------------------------------------------------------
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
+/*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec);
+/** the function calculates the percentage of the data samples correctly labelled by the DNN*/
 void updatateAcc(double *labels, LELink layer,int dataSize);
+/* this function allows the addition of  two matrices or two vectors*/
 void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim);
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
@@ -139,6 +178,7 @@ void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
 void TrainDNNGD();
 
+//-----------------------------------------------------------------------------------------
 
 void freeMemoryfromANN();
 /*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/

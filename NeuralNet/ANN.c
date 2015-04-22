@@ -36,6 +36,7 @@ static int validationDataSetSize;
 
 /*configurations for DNN architecture*/
 static Boolean doHF;
+static Boolean useGNMatrix;
 static MSLink modelSetInfo = NULL;
 static ActFunKind *actfunLists;
 static int *hidUnitsPerLayer;
@@ -332,18 +333,41 @@ void setBatchSize(int sampleSize){
 	//BATCHSAMPLES = sampleSize < CACHESIZE ? sampleSize : CACHESIZE;
 	BATCHSAMPLES = sampleSize;
 }
+/**load entire batch into the neural net**/
+void loadDataintoANN(double *samples, double *labels){
+	anndef->layerList[0]->feaElem->xfeatMat = samples;
+	anndef->labelMat = labels;
+}   
+
 
 //-----------------------------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
 //-----------------------------------------------------------------------------------------------------------
 void setUpForHF(ADLink anndef){
 	LELink layer;
-	int i;
+	int i,srdim,dim;
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
-		layer->gnInfo = malloc (sizeof(GaussNewtonProductInfo));
+		//set up structure to accumulate gradients
+		if (layer->traininfo->updatedWeightMat == NULL && layer->traininfo->updatedBiasMat == NULL){
+			layer->traininfo->updatedWeightMat = malloc(sizeof(double)*numOfElems);
+			layer->traininfo->updatedBiasMat = malloc(sizeof(double)*(layer->dim));
+			initialiseWithZero(layer->traininfo->updatedWeightMat,numOfElems);
+			initialiseWithZero(layer->traininfo->updatedBiasMat,layer->dim);
+		}
+		else if (layer->traininfo->updatedWeightMat == NULL || layer->traininfo->updatedBiasMat == NULL)){
+			printf("Error something went wrong during the initialisation of updatedWeightMat and updateBiasMat in the layer %d \n",i);
+			exit(0);
+		}
+		if (useGNMatrix){
+			layer->gnInfo = malloc (sizeof(GaussNewtonProductInfo));
+			layer->gnInfo->vweights = malloc(sizeof(double)*(layer->dim*layer->srcDim));
+			layer->gnInfo->vbiases = malloc(sizeof(double)* layer->dim);
+			layer->gnInfo->Ractivations  = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
+		}
 	}
 }
+
 void reinitLayerFeaMatrices(ADLink anndef){
 	LELink layer;
 	int i;
@@ -356,7 +380,6 @@ void reinitLayerFeaMatrices(ADLink anndef){
 		}
 	}
 }
-
 void initialiseErrElems(ADLink anndef){
 	int i;
 	LELink layer,srcLayer;
@@ -400,7 +423,7 @@ void initialiseBias(double *biasVec,int dim, int srcDim){
 		//randm = random_normal();
 		//biasVec[i] = randm*(1/sqrt(srcDim));
 
-		/* bengio;s proposal for a new tpye of initialisation to ensure 
+		/* bengio;s proposal for a new type of initialisation to ensure 
 			the variance of error derivatives are comparable accross layers*/
 		biasVec[i] = genrandWeight(sqrt(6)/sqrt(dim+srcDim+1));
 	}
@@ -476,7 +499,7 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	}
 }
 
-void  initialiseDNN(){
+void initialiseDNN(){
 	int i;
 	anndef = malloc(sizeof(ANNDef));
 	assert(anndef!=NULL);
@@ -583,12 +606,6 @@ void computeLinearActivation(LELink layer){
 	#endif
 }
 
-/**load entire batch into the neural net**/
-void loadDataintoANN(double *samples, double *labels){
-	anndef->layerList[0]->feaElem->xfeatMat = samples;
-	anndef->labelMat = labels;
-}   
-
 /*forward pass*/
 void fwdPassOfANN(ADLink anndef){
 	LELink layer;
@@ -611,9 +628,6 @@ void fwdPassOfANN(ADLink anndef){
 				break;	
 	}
 }
-
-
-
 
 //------------------------------------------------------------------------------------------------------
 /*This section of the code implements the back-propation algorithm  to compute the error derivatives*/
@@ -649,8 +663,55 @@ void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsample
 		}
 		//multiply node by batchsamples with batchsamples by 1
 		cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
+		free ones;
 	#endif
 }
+/**compute del^2L J where del^2L is the hessian of the cross-entropy softmax with respect to output acivations **/ 
+void computeLossHessSoftMax(LELink layer){
+	int i,j;
+	double *RactivationVec = malloc(sizeof(double)*layer->dim);
+	double *yfeatVec = malloc(sizeof(double)*layer->dim);
+	double *diaP = malloc(sizeof(double)*layer->dim*layer->dim);
+	double *result = malloc(sizeof(double)*layer->dim);
+	
+	for (i = 0 ; i< BATCHSAMPLES; i++){
+		RactivationVec = memcpy(RactivationVec,layer->gnInfo->Ractivations+i, sizeof(double)*layer->dim);
+		yfeatVec = memcpy(yfeatVec,layer->yfeatMat+i,sizeof(double)*layer->dim);
+		//compute dia(yfeaVec - yfeacVec*yfeaVec'
+		#ifdef CBLAS
+		cblas_dgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,layer->dim,layer->dim,1,-1,yfeatVec,1,yfeatVec,layer->dim,0.0,diaP,layer->dim);
+		for (j = 0; j<layer->dim;j++){
+			diaP[j*(dim+1)] += yfeatMat[j];
+		}
+		//multiple hessian of loss function of particular sample with Jacobian 
+		cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,3,1,3,1,Ractivations,1,diaP,layer->dim,0,result);
+		#endif
+		memcpy(layer->gnInfo->Ractivations+i,result,sizeof(double)*layer->dim);
+	}
+	free(result);
+	free(yfeatVec);
+	free(RactivationVec);
+	free(diaP);
+
+}
+/*compute del^2L*J where L can be any convex loss function**/
+void computeHessOfLossFunc(LELink layer, ADLink anndef){
+	switch(anndef->errorfunc){
+		case (XENT):
+			switch (layer->actfuncKind){
+				case SIGMOID:
+					//for each sample del2 Loss = diag(P)where P is Prediction so we multiply diag(P) with J
+					computeDrvAct(layer->gnInfo->Ractivations, layer->feaElem->yfeatMat,layer->dim*BATCHSAMPLES);
+				case SOFTMAX:
+					 computeLossHessSoftMax(layer);
+				default:
+					break;
+			}
+		case SSE :
+			break;
+	}
+}
+
 
 void subtractMatrix(double *dyfeat, double* labels, int dim){
 	//blas routine
@@ -687,14 +748,23 @@ void calcOutLayerBackwardSignal(LELink layer,ADLink anndef ){
 }
 
 /**function computes the error derivatives with respect to the weights and biases of the neural net*/
-void backPropBatch(ADLink anndef){
+void backPropBatch(ADLink anndef,Boolean doHessVecProd){
 	int i;
 	LELink layer;
 	for (i = (anndef->layerNum-1); i>=0;i--){
 		layer = anndef->layerList[i];
 		if (layer->role ==OUTPUT){
-			layer->errElem->dyFeatMat = layer->feaElem->yfeatMat;
-			CalcOutLayerBackwardSignal(layer,anndef);
+			if(!doHessVecProd){
+				layer->errElem->dyFeatMat = layer->feaElem->yfeatMat;
+				CalcOutLayerBackwardSignal(layer,anndef);
+			}else{
+				if(useGNMatrix){
+					computeHessOfLossFunc(layer,anndef);
+					layer->errElem->dyFeatMat = layer->gnInfo->Ractivations;
+				}
+				
+			}
+			
 		}else{
 			// from previous iteration dxfeat that is dyfeat now is dE/dZ.. computing dE/da
 			computeActivationDrv(layer); 
@@ -727,14 +797,22 @@ Ptr getHook(Ptr m){
    p = (Ptr *) m; p -=2; return *p;
 }
 
-void accumulateLayerGradient(LELink layer){
-	double *dweights;
-	double *dbiases;
-
-	dweights = malloc(sizeof(layer->traininfo->dwFeatMat));
-	dbiases = malloc(sizeof(layer->traininfo->dbFeaMat));
-	setHook(layer->traininfo->dwFeatMat,dweights);
-	setHook(layer->traininfo->dbFeaMat,dbiases);
+void accumulateLayerGradient(LELink layer,double weight){
+	assert(layer->traininfo->updatedBiasMat != NULL);
+	assert(layer->traininfo->updatedWeightMat != NULL);
+	#ifdef CBLAS
+	cblas_daxpy(layer->srcDim*layer->dim,weight,layer->traininfo->dwFeatMat,1,layer->traininfo->updatedWeightMat,1);
+	cblas_daxpy(layer->dim,weight,layer->traininfo->dbFeaMat,1,layer->traininfo->updatedBiasMat,1);
+	#else
+	//CPU version
+	int i,j;
+	for (i = 0; i<layer->dim;i++){
+		*(layer->traininfo->updatedBiasMat+i) += layer->traininfo->dbFeaMat[i];
+		for (j =0; j<layer->srcDim;j++){
+			*(layer->traininfo->updatedWeightMat +i*layer->srcDim +j)	+= layer->traininfo->dwFeatMat[i*layer->srcDim +j];
+		}
+	}
+	#endif
 }
 
 void accumulateGradientsofANN(ADLink anndef){
@@ -742,7 +820,7 @@ void accumulateGradientsofANN(ADLink anndef){
 	LELink layer;
 	for (i = 0; i< anndef->numLayers;i++){
 		layer = anndef->layerList[i];
-		accumulateLayerGradient(layer);
+		accumulateLayerGradient(layer,1);
 	}
 }
 
@@ -752,18 +830,15 @@ void accumulateGradientsofANN(ADLink anndef){
 //-----------------------------------------------------------------------------------------------------------------------------
 /*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
 //---------------------------------------------------------------------------------------------------------------------------------
-/**given a vector in parameteric space, this function copies the the segment of the vectors that aligns with the parameters of the given layer*/
+/**given a vector in parameteric space, this function copies the the segment of the vector that aligns with the parameters of the given layer*/
 void setParameterDirections(double *weights, double* bias, LELink layer){
 	assert(layer->gnInfo !=NULL):
-	
-	layer->gnInfo->vweights = malloc(sizeof(double)*(layer->dim*layer->srcDim));
-	layer->gnInfo->vbiases = malloc(sizeof(double)* layer->dim);
 	#ifdef CBLAS
 	cblas_dcopy(layer->dim*layer->srcDim,weights,1,layer->gnInfo->vweights,1);
 	cblas_dcopy(layer->dim,bias,1,layer->gnInfo_.vbiases,1);
 	#else
 	/**CPU Version**/
-	int i
+	int i;
 	for (i = 0; i<layer->dim*layer->srcDim,i++){
 		layer->gnInfo->vweights[i] = weights[i];
 	}
@@ -773,14 +848,61 @@ void setParameterDirections(double *weights, double* bias, LELink layer){
 	#endif
 }
 
+/**this function computes R(z) = h'(a)R(a)  : we assume h'a is computed during computation of gradient**/
+void updateRactivations(LELink layer){
+	//CPU Version
+	int i;
+	for (i = 0; i < layer->dim*BATCHSAMPLES; i++){
+		layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* layer->feaElem->yfeatMat[i];
+	}
+}
 
+/** this function compute \sum wji R(zi)-previous layer and adds it to R(zj)**/
+void computeRactivations(LELink layer){
+	#ifdef CBLAS
+		int i,off;
+		for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
+			 cblas_dcopy(layer->dim, layer->bias, 1, layer->gnInfo->Ractivations + off, 1);
+		}
+		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1, layer->gnInfo->Ractivations, layer->dim);
+	#endif
+}
 
+/**this function computes sum vji xi */
+void computeVweightsProjection(LELink layer){
+	#ifdef CBLAS
+		int i,off;
+		for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
+			 cblas_dcopy(layer->dim, layer->gnInfo->vbiases, 1, layer->gnInfo->Ractivations + off, 1);
+		}
+		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->gnInfo->vweights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 0, layer->gnInfo->Ractivations, layer->dim);
+	#endif
+}
+void computeDirectionalErrDrvOfLayer(LELink layer, int layerid){
+	if (layerid == 0){
+		/**compute sum vji xi **/
+		computeVweightsProjection(layer);
+		/** compute R(z) = h'(a)* R(a)**/
+		//note h'(a) is already computed during backprop of gradients;
+		updateRactivations(layer);
+	}else{
+		computeVweightsProjection(layer);
+		/** compute R(z) = h'(a)* R(a)**/
+		computeRactivations(layer);
+		if (layer->role != OUTPUT){
+			updateRactivations(layer);
+		}
+	}
+}
 
-
-
-
-
-
+void computeDirectionalErrDerivativeofANN(ADLink anndef){
+	int i;
+	LELink layer;
+	for (i = 0; anndef->layerList[i];i++){
+		layer = layerList[i];
+		computeDirectionalErrDrvOfLayer(layer,i);
+	}
+}
 
 //----------------------------------------------------------------------------------------------------
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
@@ -955,7 +1077,7 @@ void TrainDNNGD(){
 		fwdPassOfANN(anndef);
 		
 		// run backpropagation and update the parameters:
-		backPropBatch(anndef);
+		backPropBatch(anndef,FALSE);
 		updateNeuralNetParams(anndef,learningrate,momentum,weightdecay);
 		
 		//forward pass of DNN on validation data if VD is provided
@@ -976,7 +1098,7 @@ void TrainDNNGD(){
 }
 
 //--------------------------------------------------------------------------------------------------------
-/**This portion of the code implements HF full batch training**/
+/**This section of the code implements HF full batch training**/
 
 void conjugateGradient(Boolean firstEverRun){
 
@@ -1002,7 +1124,7 @@ void TrainDNNHF(){
 		loadDataintoANN(inputData,labels);
 		fwdPassOfANN(anndef);
 		// run backpropagation and update the parameters:
-		backPropBatch(anndef);
+		backPropBatch(anndef,TRUE);
 		accumulateGradientsofANN(anndef);
 		if (currentEpochIdx == 0){
 			conjugateGradient(TRUE);
@@ -1053,6 +1175,15 @@ void freeMemoryfromANN(){
 					free (anndef->layerList[i]->bias);
 				}
 				if(anndef->layerList[i]->gnInfo != NULL){
+					if (anndef->layerList[i]->gnInfo->vweights !=NULL){
+						free(anndef->layerList[i]->gnInfo->vweights);
+					}
+					if (anndef->layerList[i]->gnInfo->vbiases !=NULL){
+						free (anndef->layerList[i]->gnInfo->vbiases);
+					}
+					if (anndef->layerList[i]->gnInfo->Ractivations !=NULL);{
+						free(anndef->layerList[i]->gnInfo->Ractivations);
+					}
 					free (anndef->layerList[i]->gnInfo);
 				}
 
