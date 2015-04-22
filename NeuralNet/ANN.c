@@ -350,12 +350,12 @@ void setUpForHF(ADLink anndef){
 		layer = anndef->layerList[i];
 		//set up structure to accumulate gradients
 		if (layer->traininfo->updatedWeightMat == NULL && layer->traininfo->updatedBiasMat == NULL){
-			layer->traininfo->updatedWeightMat = malloc(sizeof(double)*numOfElems);
+			layer->traininfo->updatedWeightMat = malloc(sizeof(double)*(layer->dim * layer->srcDim));
 			layer->traininfo->updatedBiasMat = malloc(sizeof(double)*(layer->dim));
-			initialiseWithZero(layer->traininfo->updatedWeightMat,numOfElems);
+			initialiseWithZero(layer->traininfo->updatedWeightMat,layer->dim*layer->srcDim);
 			initialiseWithZero(layer->traininfo->updatedBiasMat,layer->dim);
 		}
-		else if (layer->traininfo->updatedWeightMat == NULL || layer->traininfo->updatedBiasMat == NULL)){
+		else if (layer->traininfo->updatedWeightMat == NULL || layer->traininfo->updatedBiasMat == NULL){
 			printf("Error something went wrong during the initialisation of updatedWeightMat and updateBiasMat in the layer %d \n",i);
 			exit(0);
 		}
@@ -676,7 +676,7 @@ void computeLossHessSoftMax(LELink layer){
 	
 	for (i = 0 ; i< BATCHSAMPLES; i++){
 		RactivationVec = memcpy(RactivationVec,layer->gnInfo->Ractivations+i, sizeof(double)*layer->dim);
-		yfeatVec = memcpy(yfeatVec,layer->yfeatMat+i,sizeof(double)*layer->dim);
+		yfeatVec = memcpy(yfeatVec,layer->feaElem->yfeatMat+i,sizeof(double)*layer->dim);
 		//compute dia(yfeaVec - yfeacVec*yfeaVec'
 		#ifdef CBLAS
 		cblas_dgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,layer->dim,layer->dim,1,-1,yfeatVec,1,yfeatVec,layer->dim,0.0,diaP,layer->dim);
@@ -756,7 +756,7 @@ void backPropBatch(ADLink anndef,Boolean doHessVecProd){
 		if (layer->role ==OUTPUT){
 			if(!doHessVecProd){
 				layer->errElem->dyFeatMat = layer->feaElem->yfeatMat;
-				CalcOutLayerBackwardSignal(layer,anndef);
+				calcOutLayerBackwardSignal(layer,anndef);
 			}else{
 				if(useGNMatrix){
 					computeHessOfLossFunc(layer,anndef);
@@ -818,7 +818,7 @@ void accumulateLayerGradient(LELink layer,double weight){
 void accumulateGradientsofANN(ADLink anndef){
 	int i;
 	LELink layer;
-	for (i = 0; i< anndef->numLayers;i++){
+	for (i = 0; i< anndef->layerNum;i++){
 		layer = anndef->layerList[i];
 		accumulateLayerGradient(layer,1);
 	}
@@ -832,18 +832,18 @@ void accumulateGradientsofANN(ADLink anndef){
 //---------------------------------------------------------------------------------------------------------------------------------
 /**given a vector in parameteric space, this function copies the the segment of the vector that aligns with the parameters of the given layer*/
 void setParameterDirections(double *weights, double* bias, LELink layer){
-	assert(layer->gnInfo !=NULL):
+	assert(layer->gnInfo !=NULL);
 	#ifdef CBLAS
 	cblas_dcopy(layer->dim*layer->srcDim,weights,1,layer->gnInfo->vweights,1);
 	cblas_dcopy(layer->dim,bias,1,layer->gnInfo_.vbiases,1);
 	#else
 	/**CPU Version**/
 	int i;
-	for (i = 0; i<layer->dim*layer->srcDim,i++){
+	for (i = 0; i<layer->dim*layer->srcDim;i++){
 		layer->gnInfo->vweights[i] = weights[i];
 	}
 	for (i = 0; i<layer->dim;i++){
-		layer->gnInfo->vbiases[i] = biases[i];
+		layer->gnInfo->vbiases[i] = bias[i];
 	}	
 	#endif
 }
@@ -899,7 +899,7 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef){
 	int i;
 	LELink layer;
 	for (i = 0; anndef->layerList[i];i++){
-		layer = layerList[i];
+		layer = anndef->layerList[i];
 		computeDirectionalErrDrvOfLayer(layer,i);
 	}
 }
@@ -1230,7 +1230,7 @@ void unitTests(){
 	validationData = test ;
 
 	
-	TrainDNN();
+	TrainDNNGD();
 
 
 	/**
@@ -1432,7 +1432,7 @@ int main(int argc, char *argv[]){
 
 	initialise();
 	//fwdPassOfANN(anndef);
-	TrainDNN();
+	TrainDNNGD();
 
 	freeMemoryfromANN();
 	//unitTests();

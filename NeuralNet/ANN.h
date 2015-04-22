@@ -12,7 +12,7 @@ typedef struct _ANNdef *ADLink;
 typedef struct _FeatElem *FELink;
 typedef struct _ErrorElem *ERLink;
 typedef struct _TrainInfo *TRLink;
-typedef struct _GaussNewtonProductInfo *GNProdInfo;
+typedef struct _GaussNewtonProdInfo *GNProdInfo;
 typedef struct _MSI *MSLink;
 
 
@@ -141,7 +141,7 @@ void computeHessOfLossFunc(LELink layer, ADLink anndef);
 void subtractMatrix(double *dyfeat, double* labels, int dim);
 void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 /**function computes the error derivatives with respect to the weights and biases of the neural net*/
-void backPropBatch(ADLink anndef);
+void backPropBatch(ADLink anndef,Boolean doHessVecProd);
 
 
 //----------------------------------------------------------------------------------------------------------
