@@ -1169,7 +1169,17 @@ int main(int argc, char *argv[]){
 		}
 	 }		
 
-
+	 initialise();
+	for ( i = 0; i<numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		printf("The trained weights of layer %i is \n",i);
+		for (j = 0; j<layer->dim;j++){
+			for (c =0 ; c< layer->srcDim ;c++){
+				printf(" %lf ",layer->weights[j*layer->dim +c] );
+			}
+			printf("\n");
+		}
+	}
 
 	
 
@@ -1187,9 +1197,20 @@ int main(int argc, char *argv[]){
 	printf("targetDim %d\n",targetDim );
 	printf("numLayers %d\n",numLayers);
 
-	initialise();
+	
 	//fwdPassOfANN(anndef);
 	TrainDNN();
+
+	for ( i = 0; i<numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		printf("The trained weights of layer %i is \n",i);
+		for (j = 0; j<layer->dim;j++){
+			for (c =0 ; c< layer->srcDim ;c++){
+				printf(" %lf ",layer->weights[j*layer->dim +c] );
+			}
+			printf("\n");
+		}
+	}
 
 	freeMemoryfromANN();
 	//unitTests();
