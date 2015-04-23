@@ -28,6 +28,7 @@ static double randSeed;
 typedef struct _hookStruct{
 	double *matrix;
 	int id;
+	double t;
 }Hook;
 
 
@@ -72,10 +73,12 @@ int main(){
    for (i =0 ; i< 8;i++){
    	printf("testing hooks values %d %f \n",i,*(hookmat+i));
    }
+   printf(" Ptr  size hookmat  is %lu \n",sizeof(hookmat));
    free(hookmat);
 
 	printf("hello 2 \n");
    hook->id = 2;
+	printf(" Ptr  size A3  is %lu \n",sizeof(A3));
    setHook(A3, A3);
    printf("hello 3 \n"); 
    hookmat = getHook(A3);
@@ -83,6 +86,8 @@ int main(){
    for (i =0 ; i< 6;i++){
    	printf("testing hooks values %d %f \n",i,*(hookmat+i));
    }
+   printf(" Ptr  size hook  is %lu \n",sizeof(hook));
+   setHook(hook,A3);
    free(hook);
    //free(hook2->matrix);
 
@@ -146,6 +151,34 @@ int main(){
   printf (" %g, %g\n", C[6], C[7]);
   printf ("  %g ]\n", C[8]);
   
+
+//testing copying segments**/
+  float *copy = malloc(sizeof(float)*3);
+  memcpy(copy,A1,sizeof(float)*3);
+
+  float *outpro = malloc(sizeof(float)*3);
+
+  cblas_sgemm (CblasColMajor, 
+               CblasTrans, CblasTrans, 3, 3, 1,
+               1.0, copy,1, copy, 3, 0, outpro, 3);
+
+  printf ("[ %g, %g\n", outpro[0], outpro[1]);
+  printf ("  %g, %g ]\n", outpro[2], outpro[3]);
+  printf ("  %g, %g \n", outpro[4], outpro[5]);
+  printf (" %g, %g\n", outpro[6], outpro[7]);
+  printf ("  %g ]\n", outpro[8]);
+  
+  free (outpro);
+
+
+  printf("element %d of copy is %f\n",0,copy[0]);
+  printf("element %d of copy is %f\n",0,copy[1]);
+  printf("element %d of copy is %f\n",0,copy[2]);
+
+  free(copy);
+
+
+
 /**
 
   cblas_saxpy(3,-1,ones,1,test,1);
@@ -396,10 +429,16 @@ void testfunct(double *v){
 
 void setHook(Ptr m, Ptr ptr){
 	Ptr *p;
-	printf("hello\n");
+	printf(" Ptr is %p \n",p);
+
    p = (Ptr *) m; 
+   printf(" Ptr  is %p \n",p);
+   printf(" Ptr  size is %lu \n",sizeof(p));
    printf("hello casting success\n");
-   p -= 2; *p = ptr;
+   p -= 2; 
+   printf(" Ptr  is %p \n",p);
+   printf(" Ptr  size is %lu \n",sizeof(p));
+   *p = ptr;
 }
 
 Ptr getHook(Ptr m){
