@@ -135,82 +135,97 @@ void parseCfg(char * filepath){
 	size_t len = 0;
 	char* token;
 	char* list;
+	char *pos;
 
 	fp = fopen(filepath,"r");
 	while(getline(&line,&len,fp)!=-1){
 		token = strtok(line," : ");
+		printf("%s\n", token);
 		if (strcmp(token,"momentum")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			momentum = strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"weightdecay")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			weightdecay = strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;	
 		}
 		if (strcmp(token,"minLR")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			minLR = strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue	;
 		}
 		if (strcmp(token,"maxEpochNum")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			maxEpochNum = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"initLR")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			initLR =  strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"threshold")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			threshold = strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"numLayers")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			numLayers = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"inputDim")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			inputDim = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"targetDim")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			targetDim = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"trainingDataSetSize")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			trainingDataSetSize = (int) strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"validationDataSetSize")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			validationDataSetSize = (int)strtod (token,NULL);
 			token = strtok(NULL," : ");
 			continue;
 		}
 		if (strcmp(token,"Errfunc")==0){
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			if (strcmp("XENT",token)==0){
 				errfunc = XENT;
 				target = CLASSIFICATION;
 			}else if (strcmp("SSE",token)==0){
+				printf("ITS Not XENT\n");
 				errfunc = SSE ;
 				target = REGRESSION ;
 			}	
@@ -220,6 +235,7 @@ void parseCfg(char * filepath){
 		if (strcmp(token,"hiddenUnitsPerLayer")==0){
 			hidUnitsPerLayer = malloc(sizeof(int)*numLayers);
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			list = token;
 			while(token != NULL){
 				token = strtok(NULL,":");
@@ -239,6 +255,7 @@ void parseCfg(char * filepath){
 		if (strcmp(token,"activationfunctionsPerLayer")==0){
 			actfunLists = malloc( sizeof(ActFunKind)*numLayers);
 			token = strtok(NULL," : ");
+			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
 			list = token;
 			while(token !=NULL){
 				token = strtok(NULL,":");
@@ -484,7 +501,7 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer){
 	layer->feaElem->xfeatMat = (srcLayer != NULL) ? srcLayer->feaElem->yfeatMat : NULL;
 	
 	//intialise traininfo
-	layer->traininfo = (TRLink) malloc(sizeof(TrainInfo));
+	layer->traininfo = (TRLink) malloc(sizeof(TrainInfo) + sizeof(double)*(numOfElems*2));
 	assert(layer->traininfo!= NULL);
 	layer->traininfo->dwFeatMat = malloc(sizeof(double)*numOfElems);
 	layer->traininfo->dbFeaMat = malloc(sizeof(double)*layer->dim);
@@ -522,7 +539,10 @@ void initialiseDNN(){
 	anndef->errorfunc = errfunc;
 	//initialise ErrElems of layers for back-propagation
 	initialiseErrElems(anndef);
-	if (doHF) setUpForHF(anndef);
+	if (doHF) {
+		setUpForHF(anndef);
+	}
+
 }
 
 
@@ -675,6 +695,7 @@ void computeLossHessSoftMax(LELink layer){
 	double *result = malloc(sizeof(double)*layer->dim);
 	
 	for (i = 0 ; i< BATCHSAMPLES; i++){
+
 		RactivationVec = memcpy(RactivationVec,layer->gnInfo->Ractivations+i, sizeof(double)*layer->dim);
 		yfeatVec = memcpy(yfeatVec,layer->feaElem->yfeatMat+i,sizeof(double)*layer->dim);
 		//compute dia(yfeaVec - yfeacVec*yfeaVec'
@@ -784,17 +805,17 @@ void backPropBatch(ADLink anndef,Boolean doHessVecProd){
 //----------------------------------------------------------------------------------------------------------
 /**this segment of the code is reponsible for accumulating the gradients **/
 //---------------------------------------------------------------------------------------------------------
-void setHook(Ptr m, Ptr ptr){
+void setHook(Ptr m, Ptr ptr,int incr){
 	Ptr *p;
 	printf("hello\n");
    p = (Ptr *) m; 
    printf("hello casting success\n");
-   p -= 2; *p = ptr;
+   p -= incr; *p = ptr;
 }
 
-Ptr getHook(Ptr m){
+Ptr getHook(Ptr m,int incr){
 	Ptr *p;
-   p = (Ptr *) m; p -=2; return *p;
+   p = (Ptr *) m; p -=incr; return *p;
 }
 
 void accumulateLayerGradient(LELink layer,double weight){
@@ -907,11 +928,57 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef){
 //----------------------------------------------------------------------------------------------------
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
 //-------------------------------------------------------------------------------------------------------
+void resetWeights(ADLink anndef){
+	int i;
+	LELink layer;
+	for( i = 0; i < anndef->layerNum;i++){
+		layer = anndef->layerList[i];
+		double* weightCache = (double *) getHook(layer->traininfo,1);
+		double* biasCache = (double *) getHook(layer->traininfo,2);
+		printf("size of retrieved memory %lu %lu \n",sizeof(weightCache),sizeof(biasCache));
+		#ifdef CBLAS
+			cblas_dcopy(layer->dim*layer->srcDim, layer->weights, 1, weightCache, 1);
+			cblas_dcopy(layer->dim, layer->bias, 1, biasCache, 1);
+		#endif
+	}
+}
+
+
+
+void fillCache(LELink layer,int dim,Boolean weights){
+	#ifdef CBLAS
+	if (weights){
+		double* paramCache = (double *) getHook(layer->traininfo,1);
+		cblas_dcopy(dim, paramCache, 1, layer->weights, 1);
+	}else{
+		double* paramCache = (double *) getHook(layer->traininfo,2);
+		cblas_dcopy(dim, paramCache, 1, layer->bias, 1);
+	}
+
+	#endif
+
+}
+
+
+void intialiseParameterCaches(ADLink anndef){
+	int i;
+	LELink layer;
+	for (i =(anndef->layerNum-1) ; i >=0; --i){
+		layer = anndef->layerList[i];
+		double* weightCache = malloc(sizeof(double)*(layer->dim*layer->srcDim));
+		double* biasCache =  malloc(sizeof(double)*layer->dim);
+		setHook(layer->traininfo,weightCache,1);
+		setHook(layer->traininfo,biasCache,2);
+	}	
+}
+
+
+
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize){
 	int i;
 	for (i = 0; i< dataSize;i++){
 		predictions[i] = yfeatMat[i]>0.5 ? 1 :0;
-		printf("Predictions %d  %lf  and yfeat is %lf \n",i,predictions[i],yfeatMat[i]);
+		printf("Predictions %d  %lf  and yfeat is %lf and real predict is %lf \n",i,predictions[i],yfeatMat[i],validationLabelIdx[i]);
 	}
 }
 
@@ -944,7 +1011,6 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 		}else{
 			perfBinClassf(layer->feaElem->yfeatMat,predictions,dataSize);
 		}
-		
 		for (i = 0; i<dataSize;i++){
 			if (predictions[i] == labels[i]){
 				accCount+=1;
@@ -960,18 +1026,18 @@ void updatateAcc(double *labels, LELink layer,int dataSize){
 	}		
 		
 	modelSetInfo->crtVal = accCount/dataSize;
-	printf("The critical value is %f \n", modelSetInfo->crtVal);
+	printf("The critical value is %f  %d\n", modelSetInfo->crtVal,dataSize);
 }
 
 /* this function allows the addition of  two matrices or two vectors*/
-void addMatrixOrVec(double *weights, double *dwFeatMat,int dim){
+void addMatrixOrVec(double *weights, double *dwFeatMat,int dim, double lambda){
 	//blas routine
 	#ifdef CBLAS
-		cblas_daxpy(dim,1,weights,1,dwFeatMat,1);
+		cblas_daxpy(dim,lambda,weights,1,dwFeatMat,1);
 	#else
 		int i;
 		for (i =0;i<dim;i++){
-			dwFeatMat[i] = dwFeatMat[i] + weights[i];
+			dwFeatMat[i] = dwFeatMat[i] + lambda*weights[i];
 		}
 	#endif	
 }
@@ -992,39 +1058,30 @@ void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, doubl
 	LELink layer;
 	for (i =(anndef->layerNum-1) ; i >=0; --i){
 		layer = anndef->layerList[i];
+		fillCache(layer,layer->dim*layer->srcDim,TRUE);
+		fillCache(layer,layer->dim,FALSE);
+		printf("FILL CACHE successful\n");
 		//if we have a regularised error function: R_E = Er+ b * 1/2 w^w then dR_E = dEr + bw where b is weight decay parameter
 		if (weightdecay > 0){
-			scaleMatrixOrVec(layer->weights,weightdecay,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->bias,weightdecay,layer->dim);
-			addMatrixOrVec(layer->weights,layer->traininfo->dwFeatMat,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->bias,layer->traininfo->dbFeaMat,layer->dim);
+			addMatrixOrVec(layer->weights,layer->traininfo->dwFeatMat,layer->dim*layer->srcDim,weightdecay);
+			addMatrixOrVec(layer->bias,layer->traininfo->dbFeaMat,layer->dim,weightdecay);
 		}
-		if (lrnrate > 0){
-			scaleMatrixOrVec(layer->traininfo->dwFeatMat,lrnrate,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->traininfo->dbFeaMat,lrnrate,layer->dim);
-		}
-		if (momentum > 0){
+		if (momentum > 0 ){
 			scaleMatrixOrVec(layer->traininfo->updatedWeightMat,momentum,layer->dim*layer->srcDim);
 			scaleMatrixOrVec(layer->traininfo->updatedBiasMat,momentum,layer->dim);
-			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->traininfo->updatedWeightMat,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->traininfo->updatedBiasMat,layer->dim);
+			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->traininfo->updatedWeightMat,layer->dim*layer->srcDim,1-momentum);
+			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->traininfo->updatedBiasMat,layer->dim,1-momentum);
 			//updating parameters: first we need to descale the lambda from weights and bias
-			if (weightdecay > 0){
-			scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
-			scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
-			}
-			addMatrixOrVec(layer->traininfo->updatedWeightMat,layer->weights,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->traininfo->updatedBiasMat,layer->bias,layer->dim);
+			addMatrixOrVec(layer->traininfo->updatedWeightMat,layer->weights,layer->dim*layer->srcDim,lrnrate);
+			addMatrixOrVec(layer->traininfo->updatedBiasMat,layer->bias,layer->dim,lrnrate);
 		}else{
 			//updating parameters: first we need to descale the lambda from weights and bias
-			if (weightdecay > 0){
-				scaleMatrixOrVec(layer->weights,1/weightdecay,layer->dim*layer->srcDim);
-				scaleMatrixOrVec(layer->bias,1/weightdecay,layer->dim);
-			}
-			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->weights,layer->dim*layer->srcDim);
-			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->bias,layer->dim);
+			addMatrixOrVec(layer->traininfo->dwFeatMat,layer->weights,layer->dim*layer->srcDim,lrnrate);
+			addMatrixOrVec(layer->traininfo->dbFeaMat,layer->bias,layer->dim,lrnrate);
 		}
 	}
+	printf(" step size  has been computed\n");
+		
 }
 
 void updateLearningRate(int currentEpochIdx, double *lrnrate){
@@ -1045,6 +1102,7 @@ Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate){
 	if (currentEpochIdx == 0) return TRUE;
 	if (currentEpochIdx >=0 && currentEpochIdx >= maxEpochNum)return FALSE;
 	if( (-1*lrnrate) < minLR)return FALSE;
+	if (fabs(lrnrate-0)<0.0001) return FALSE;
 	return TRUE; 
 }
 
@@ -1067,6 +1125,7 @@ void TrainDNNGD(){
 	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],BATCHSAMPLES);
 	printf("successfully accumulated counts \n");
 	
+	intialiseParameterCaches(anndef);
 	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
 		printf("epoc number %d \n", currentEpochIdx);
 		updateLearningRate(currentEpochIdx,&learningrate);
@@ -1078,8 +1137,9 @@ void TrainDNNGD(){
 		
 		// run backpropagation and update the parameters:
 		backPropBatch(anndef,FALSE);
+		printf("computed gradients for epoch %d\n",currentEpochIdx);
 		updateNeuralNetParams(anndef,learningrate,momentum,weightdecay);
-		
+		printf("YES\n");
 		//forward pass of DNN on validation data if VD is provided
 		if (validationData != NULL && validationLabelIdx != NULL){
 			setBatchSize(validationDataSetSize);
@@ -1089,6 +1149,10 @@ void TrainDNNGD(){
 			fwdPassOfANN(anndef);
 			modelSetInfo->prevCrtVal = modelSetInfo->crtVal;
 			updatateAcc(validationLabelIdx,anndef->layerList[numLayers-1],validationDataSetSize);
+			if ((modelSetInfo->crtVal - modelSetInfo->prevCrtVal)<0){
+				resetWeights(anndef);
+				modelSetInfo->crtVal = modelSetInfo->prevCrtVal;
+			}
 		}else{
 			modelSetInfo->prevCrtVal = modelSetInfo->crtVal;
 			updatateAcc(labels,anndef->layerList[numLayers-1],trainingDataSetSize);
@@ -1145,18 +1209,21 @@ void freeMemoryfromANN(){
 		for (i = 0;i<numLayers;i++){
 			printf("LAYER %d \n",i);
 			if (anndef->layerList[i] !=NULL){
+				printf("Issue 1\n");
 				if (anndef->layerList[i]->feaElem != NULL){
 					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
 						free (anndef->layerList[i]->feaElem->yfeatMat);
 					}
 					free(anndef->layerList[i]->feaElem);
 				}
+				printf("Issue 2\n");
 				if (anndef->layerList[i]->errElem !=NULL){
 					if (anndef->layerList[i]->errElem->dxFeatMat != NULL){
 						free (anndef->layerList[i]->errElem->dxFeatMat);
 					}
 					free(anndef->layerList[i]->errElem);
 				}
+				printf("Issue 3\n");
 				if (anndef->layerList[i]->traininfo!=NULL){
 					free (anndef->layerList[i]->traininfo->dwFeatMat);
 					free (anndef->layerList[i]->traininfo->dbFeaMat);
@@ -1168,13 +1235,23 @@ void freeMemoryfromANN(){
 					}
 					free (anndef->layerList[i]->traininfo);
 				}
+				printf("Issue 4\n");
 				if (anndef->layerList[i]->weights !=NULL){
+					//if (getHook(anndef->layerList[i]->weights)!=NULL){
+					//	free(getHook(anndef->layerList[i]->weights));
+					//}
 					free (anndef->layerList[i]->weights);
 				}
+				printf("Issue 5\n");
 				if (anndef->layerList[i]->bias !=NULL){
+					//if (getHook(anndef->layerList[i]->bias)!=NULL){
+					//	free (getHook(anndef->layerList[i]->bias));
+					//}
 					free (anndef->layerList[i]->bias);
 				}
+				printf("Issue 6\n");
 				if(anndef->layerList[i]->gnInfo != NULL){
+					printf("%d\n",anndef->layerList[i]->gnInfo ==NULL );
 					if (anndef->layerList[i]->gnInfo->vweights !=NULL){
 						free(anndef->layerList[i]->gnInfo->vweights);
 					}
@@ -1186,7 +1263,8 @@ void freeMemoryfromANN(){
 					}
 					free (anndef->layerList[i]->gnInfo);
 				}
-
+				printf("Issue 7\n");
+				
 				free (anndef->layerList[i]);
 			}
 		}
@@ -1341,6 +1419,13 @@ int main(int argc, char *argv[]){
 
 
 	int i,j,c;
+	double * ptr  = malloc( sizeof(double));
+	double A[] ={1 ,2, 3};
+	memcpy(ptr, A, sizeof(double)*3);
+	for (i =0 ;i< 3; i++){
+		printf(" %lf \n ", ptr[i]);
+	}
+	free (ptr);
 	/**
 	c = 0;
 	for (i = 0; i < trainingDataSetSize;i++){
@@ -1378,7 +1463,7 @@ int main(int argc, char *argv[]){
 		printf("\n");
 	}
  **/
-	c=0;
+	/**c=0;
 	for (i = 0; i < validationDataSetSize;i++){
 		printf("sample  id %d\n",i);
 		printf(" validation labels \n");
@@ -1388,7 +1473,7 @@ int main(int argc, char *argv[]){
 		}
 		printf("\n");
 	}
-	
+	**/
  
 
 	//dislay number of units in each hidden layer
@@ -1431,10 +1516,46 @@ int main(int argc, char *argv[]){
 	printf("numLayers %d\n",numLayers);
 
 	initialise();
+	for ( i = 0; i< numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		printf("layer id  %d \n",i);	
+		for (j = 0 ; j< layer->dim;j++){
+			for (c =0 ; c <layer->srcDim;c++){
+				printf(" %lf ", layer->weights[j*layer->dim +c]);
+			}
+			printf("\n");
+		}
+		for (j = 0 ; j< layer->dim;j++){
+			printf(" %lf ", layer->bias[j]);
+		}
+		printf("\n");
+
+	}
+
+
 	//fwdPassOfANN(anndef);
 	TrainDNNGD();
 
+
+	for ( i = 0; i< numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		printf("layer id  %d \n",i);	
+		for (j = 0 ; j< layer->dim;j++){
+			for (c =0 ; c <layer->srcDim;c++){
+				printf(" %lf ", layer->weights[j*layer->dim +c]);
+			}
+			printf("\n");
+		}
+		for (j = 0 ; j< layer->dim;j++){
+			printf(" %lf ", layer->bias[j]);
+		}
+		printf("\n");
+
+	}
+
+
+
 	freeMemoryfromANN();
 	//unitTests();
-}
+}  
 

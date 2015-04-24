@@ -1,14 +1,14 @@
-momentum : 0.0000001
-weightdecay : 0.90
-minLR : 0..00023
+momentum : 0.0
+weightdecay : 0
+minLR : 0..1
 threshold : 0.1234
-maxEpochNum : 20
+maxEpochNum : 10
 targetDim : 1
 inputDim : 2
-numLayers : 3
-trainingDataSetSize : 2091
-validationDataSetSize : 2000
-hiddenUnitsPerLayer : 6,4,1
-activationfunctionsPerLayer : SIGMOID,SIGMOID,IDENTITY
-Errfunc : SSE
+numLayers : 1
+trainingDataSetSize : 40
+validationDataSetSize : 40
+hiddenUnitsPerLayer : 1
+activationfunctionsPerLayer : SIGMOID
+Errfunc : XENT
 

@@ -146,8 +146,8 @@ void backPropBatch(ADLink anndef,Boolean doHessVecProd);
 
 //----------------------------------------------------------------------------------------------------------
 /**this segment of the code is reponsible for accumulating peviously computed  gradients **/
-void setHook(Ptr m, Ptr ptr);
-Ptr getHook(Ptr m);
+void setHook(Ptr m, Ptr ptr,int incr);
+Ptr getHook(Ptr m,int incr);
 void accumulateLayerGradient(LELink layer,double weight);
 void accumulateGradientsofANN(ADLink anndef);
 
@@ -171,7 +171,7 @@ void findMaxElement(double *matrix, int row, int col, double *vec);
 /** the function calculates the percentage of the data samples correctly labelled by the DNN*/
 void updatateAcc(double *labels, LELink layer,int dataSize);
 /* this function allows the addition of  two matrices or two vectors*/
-void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim);
+void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim,double lambda);
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
