@@ -8,13 +8,15 @@
 
 #ifndef M_PI
 	#define M_PI 3.14159265358979323846
-#endif
+	#endif
 #ifndef CACHESIZE
 	#define CACHESIZE 100
 #endif
+
 #ifdef CBLAS
 #include "/Users/adnan/NeuralNet/CBLAS/include/cblas.h"
 #endif
+
 
 /*hyper-parameters deep Neural Net training initialised with default values*/
 static double weightdecay = 0;
@@ -140,7 +142,6 @@ void parseCfg(char * filepath){
 	fp = fopen(filepath,"r");
 	while(getline(&line,&len,fp)!=-1){
 		token = strtok(line," : ");
-		printf("%s\n", token);
 		if (strcmp(token,"momentum")==0){
 			token = strtok(NULL," : ");
 			if ((pos=strchr(token, '\n')) != NULL){*pos = '\0';}
@@ -289,11 +290,11 @@ void parseCfg(char * filepath){
 
 void parseCMDargs(int argc, char *argv[]){
 	int i;
-	if (strcmp(argv[2],"-C")!=0){
+	if (strcmp(argv[1],"-C")!=0){
 		printf("the first argument to ANN must be the config file \n");
 		exit(0);
 	}
-	for (i = 2 ; i < argc;i++){
+	for (i = 1 ; i < argc;i++){
 		if (strcmp(argv[i],"-C") == 0){
 			++i;
 			printf("parsing cfg\n");
@@ -565,7 +566,7 @@ double computeSigmoid(double x){
 }
 /*computing non-linear activation*/
 void computeNonLinearActOfLayer(LELink layer){
-	int i ;
+	int i,j ;
 	double sum;
 	switch(layer->role){
 		case HIDDEN:
@@ -588,6 +589,7 @@ void computeNonLinearActOfLayer(LELink layer){
 			switch(layer->actfuncKind){
 				case SIGMOID:
 					if (layer->dim==1){
+
 					/*logistic regression now yfeatmmat is now an array where of one output activation per sample*/
 						for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
 							layer->feaElem->yfeatMat[i] = computeSigmoid(layer->feaElem->yfeatMat[i]);
@@ -599,13 +601,16 @@ void computeNonLinearActOfLayer(LELink layer){
 					break;	
 				case SOFTMAX:
 				//softmax activation
-					for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
-						layer->feaElem->yfeatMat[i] = exp(layer->feaElem->yfeatMat[i]);
-						sum+=layer->feaElem->yfeatMat[i];
+					for (i = 0;i < BATCHSAMPLES;i++){
+						sum = 0;
+						for (j =0; j<layer->dim;j++){
+							layer->feaElem->yfeatMat[i*layer->dim+j] = exp(layer->feaElem->yfeatMat[i*layer->dim+j]);
+							sum+=layer->feaElem->yfeatMat[i*layer->dim+j];
+						}
+						for (j =0; j<layer->dim;j++){
+							layer->feaElem->yfeatMat[i*layer->dim+j]/=sum ;
+						}
 					}
-					for (i = 0;i < layer->dim*BATCHSAMPLES;i++){
-						layer->feaElem->yfeatMat[i] =layer->feaElem->yfeatMat[i]/sum;
-					}	
 					break;
 				default:
 					break;	
@@ -683,11 +688,13 @@ void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsample
 		}
 		//multiply node by batchsamples with batchsamples by 1
 		cblas_dgemv(CblasColMajor,CblasNoTrans, dim,batchsamples,1,dyFeatMat,dim,ones,1,0,dbFeatMat,1);
-		free ones;
+		free (ones);
 	#endif
 }
 /**compute del^2L J where del^2L is the hessian of the cross-entropy softmax with respect to output acivations **/ 
+
 void computeLossHessSoftMax(LELink layer){
+	
 	int i,j;
 	double *RactivationVec = malloc(sizeof(double)*layer->dim);
 	double *yfeatVec = malloc(sizeof(double)*layer->dim);
@@ -695,19 +702,23 @@ void computeLossHessSoftMax(LELink layer){
 	double *result = malloc(sizeof(double)*layer->dim);
 	
 	for (i = 0 ; i< BATCHSAMPLES; i++){
-
-		RactivationVec = memcpy(RactivationVec,layer->gnInfo->Ractivations+i, sizeof(double)*layer->dim);
-		yfeatVec = memcpy(yfeatVec,layer->feaElem->yfeatMat+i,sizeof(double)*layer->dim);
-		//compute dia(yfeaVec - yfeacVec*yfeaVec'
 		#ifdef CBLAS
-		cblas_dgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,layer->dim,layer->dim,1,-1,yfeatVec,1,yfeatVec,layer->dim,0.0,diaP,layer->dim);
+		/**extract error directional derivative for a single sample*/ 
+		cblas_dcopy(layer->dim, layer->gnInfo->Ractivations+i*(layer->dim), 1, RactivationVec, 1);
+		cblas_dcopy(layer->dim,layer->feaElem->yfeatMat+i*(layer->dim), 1, yfeatVec, 1);
+
+		//compute dia(yfeaVec - yfeacVec*yfeaVec'
+		cblas_dgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,layer->dim,layer->dim,1,-1,yfeatVec,layer->dim,yfeatVec,1,0,diaP,layer->dim);
 		for (j = 0; j<layer->dim;j++){
-			diaP[j*(dim+1)] += yfeatMat[j];
+			diaP[j*(layer->dim+1)] += yfeatVec[j];
 		}
 		//multiple hessian of loss function of particular sample with Jacobian 
-		cblas_dgemm(CblasColMajor,CblasTrans,CblasNoTrans,3,1,3,1,Ractivations,1,diaP,layer->dim,0,result);
+		cblas_dgemv(CblasColMajor,CblasNoTrans,layer->dim,layer->dim,1,diaP,layer->dim,RactivationVec,1,0,result,1);
+		cblas_dcopy(layer->dim, result, 1,layer->gnInfo->Ractivations+i*(layer->dim),1);
+		#else
+			RactivationVec = memcpy(RactivationVec,layer->gnInfo->Ractivations+i, sizeof(double)*layer->dim);
+			yfeatVec = memcpy(yfeatVec,layer->feaElem->yfeatMat+i,sizeof(double)*layer->dim);
 		#endif
-		memcpy(layer->gnInfo->Ractivations+i,result,sizeof(double)*layer->dim);
 	}
 	free(result);
 	free(yfeatVec);
@@ -715,16 +726,20 @@ void computeLossHessSoftMax(LELink layer){
 	free(diaP);
 
 }
+
 /*compute del^2L*J where L can be any convex loss function**/
-void computeHessOfLossFunc(LELink layer, ADLink anndef){
+void computeHessOfLossFunc(LELink outlayer, ADLink anndef){
 	switch(anndef->errorfunc){
 		case (XENT):
-			switch (layer->actfuncKind){
+			switch (outlayer->actfuncKind){
 				case SIGMOID:
-					//for each sample del2 Loss = diag(P)where P is Prediction so we multiply diag(P) with J
-					computeDrvAct(layer->gnInfo->Ractivations, layer->feaElem->yfeatMat,layer->dim*BATCHSAMPLES);
+					//for each sample del2 Loss = diag(P*(1-p))where P is Prediction so we multiply diag(P) with J
+					computeActivationDrv (outlayer);
+					computeDrvAct(outlayer->gnInfo->Ractivations, outlayer->feaElem->yfeatMat,outlayer->dim*BATCHSAMPLES);
+					break;
 				case SOFTMAX:
-					 computeLossHessSoftMax(layer);
+					printf("Reaches here 1\n");
+					computeLossHessSoftMax(outlayer);
 				default:
 					break;
 			}
@@ -849,14 +864,14 @@ void accumulateGradientsofANN(ADLink anndef){
 
 
 //-----------------------------------------------------------------------------------------------------------------------------
-/*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
+/*This section of the code is respoonsible for computing the directional derivative of the error function using forward differentiation*/
 //---------------------------------------------------------------------------------------------------------------------------------
 /**given a vector in parameteric space, this function copies the the segment of the vector that aligns with the parameters of the given layer*/
 void setParameterDirections(double *weights, double* bias, LELink layer){
 	assert(layer->gnInfo !=NULL);
 	#ifdef CBLAS
 	cblas_dcopy(layer->dim*layer->srcDim,weights,1,layer->gnInfo->vweights,1);
-	cblas_dcopy(layer->dim,bias,1,layer->gnInfo_.vbiases,1);
+	cblas_dcopy(layer->dim,bias,1,layer->gnInfo->vbiases,1);
 	#else
 	/**CPU Version**/
 	int i;
@@ -874,7 +889,14 @@ void updateRactivations(LELink layer){
 	//CPU Version
 	int i;
 	for (i = 0; i < layer->dim*BATCHSAMPLES; i++){
-		layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* layer->feaElem->yfeatMat[i];
+		switch (layer->actfuncKind){
+			case SIGMOID:
+				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (layer->feaElem->yfeatMat[i])*(1-layer->feaElem->yfeatMat[i]);
+		
+			default:
+				layer->gnInfo->Ractivations[i]*=1; 
+		}
+		
 	}
 }
 
@@ -883,9 +905,9 @@ void computeRactivations(LELink layer){
 	#ifdef CBLAS
 		int i,off;
 		for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
-			 cblas_dcopy(layer->dim, layer->bias, 1, layer->gnInfo->Ractivations + off, 1);
+			 cblas_daxpy(layer->dim,1,layer->bias,1,layer->gnInfo->Ractivations + off,1);
 		}
-		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1, layer->gnInfo->Ractivations, layer->dim);
+		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1.0, layer->gnInfo->Ractivations, layer->dim);
 	#endif
 }
 
@@ -897,6 +919,7 @@ void computeVweightsProjection(LELink layer){
 			 cblas_dcopy(layer->dim, layer->gnInfo->vbiases, 1, layer->gnInfo->Ractivations + off, 1);
 		}
 		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->gnInfo->vweights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 0, layer->gnInfo->Ractivations, layer->dim);
+		
 	#endif
 }
 void computeDirectionalErrDrvOfLayer(LELink layer, int layerid){
@@ -919,7 +942,7 @@ void computeDirectionalErrDrvOfLayer(LELink layer, int layerid){
 void computeDirectionalErrDerivativeofANN(ADLink anndef){
 	int i;
 	LELink layer;
-	for (i = 0; anndef->layerList[i];i++){
+	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
 		computeDirectionalErrDrvOfLayer(layer,i);
 	}
@@ -1209,21 +1232,18 @@ void freeMemoryfromANN(){
 		for (i = 0;i<numLayers;i++){
 			printf("LAYER %d \n",i);
 			if (anndef->layerList[i] !=NULL){
-				printf("Issue 1\n");
 				if (anndef->layerList[i]->feaElem != NULL){
 					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
 						free (anndef->layerList[i]->feaElem->yfeatMat);
 					}
 					free(anndef->layerList[i]->feaElem);
 				}
-				printf("Issue 2\n");
 				if (anndef->layerList[i]->errElem !=NULL){
 					if (anndef->layerList[i]->errElem->dxFeatMat != NULL){
 						free (anndef->layerList[i]->errElem->dxFeatMat);
 					}
 					free(anndef->layerList[i]->errElem);
 				}
-				printf("Issue 3\n");
 				if (anndef->layerList[i]->traininfo!=NULL){
 					free (anndef->layerList[i]->traininfo->dwFeatMat);
 					free (anndef->layerList[i]->traininfo->dbFeaMat);
@@ -1235,21 +1255,12 @@ void freeMemoryfromANN(){
 					}
 					free (anndef->layerList[i]->traininfo);
 				}
-				printf("Issue 4\n");
 				if (anndef->layerList[i]->weights !=NULL){
-					//if (getHook(anndef->layerList[i]->weights)!=NULL){
-					//	free(getHook(anndef->layerList[i]->weights));
-					//}
 					free (anndef->layerList[i]->weights);
 				}
-				printf("Issue 5\n");
 				if (anndef->layerList[i]->bias !=NULL){
-					//if (getHook(anndef->layerList[i]->bias)!=NULL){
-					//	free (getHook(anndef->layerList[i]->bias));
-					//}
 					free (anndef->layerList[i]->bias);
 				}
-				printf("Issue 6\n");
 				if(anndef->layerList[i]->gnInfo != NULL){
 					printf("%d\n",anndef->layerList[i]->gnInfo ==NULL );
 					if (anndef->layerList[i]->gnInfo->vweights !=NULL){
@@ -1411,14 +1422,124 @@ void unitTests(){
 //=================================================================================
 
 int main(int argc, char *argv[]){
-	if (argc != 12 && argc != 14 ){
+	/**testing gauss newton product**/
+	
+	parseCfg("cfg");
+	doHF =TRUE;
+	useGNMatrix =TRUE;
+	BATCHSAMPLES=2;
+	printf("BATCH SAMPLES is %d \n",BATCHSAMPLES);
+	initialiseDNN();
+
+	int i,j,c;
+	double V1[] = {1,1,2,1};
+	double b1[] ={0,0};
+	double V2[] ={1,1,1,1,1,1};
+	double b2[] ={0};
+	double x[] = {0,1,2,0};
+	anndef->layerList[0]->feaElem->xfeatMat = x; 
+
+	double weights[] = { 1,2,1,1};
+	double weightsT[] ={1,1,0,2,1,3};
+	
+	double y[] = {1,1,1,1};
+	double y2[] ={ 1,2,3};
+	double d[] ={2,1,2,1,4,3,2,3,1};
+	double result[] ={0,0,0};
+	printf("\n");
+
+	cblas_dgemv(CblasColMajor,CblasNoTrans,3,3,1,d,3,y2,1,0,result,1);
+	
+	printf("symmetric matrix vector\n");
+	for (i=0;i<3;i++){
+		//y[i] = computeSigmoid(y[i]);
+		printf(" %lf ", result[i]);
+	}
+	printf("\n");
+		
+	cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, 2, BATCHSAMPLES, 2, 1, weights, 2, x, 2, 0, y, 2);
+	
+	printf("Test multiplicaiton \n");
+	for (i=0;i<4;i++){
+		//y[i] = computeSigmoid(y[i]);
+		printf(" %lf ", y[i]);
+	}
+	printf("\n");
+
+
+	for ( i = 0; i< numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		if (i==0){
+			setParameterDirections(V1,b1, layer);
+			free(layer->weights);
+			layer->weights = weights;
+		}	
+		else{
+
+			setParameterDirections( V2,b2, layer);
+			free(layer->weights);
+			layer->weights = weightsT;
+			
+		}  
+		printf("layer id  %d \n",i);
+		
+		
+		for (j = 0 ; j< layer->dim;j++){
+			for (c =0 ; c <layer->srcDim;c++){
+				printf(" %lf ", layer->weights[j*layer->dim +c]);
+			}
+			layer->bias[j]=0;
+			printf("\n");
+		}
+	}
+	printf("doing fwdPass \n");
+	fwdPassOfANN(anndef);
+	printf(" fwdPass complete \n");
+	
+	for ( i = 0; i< numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+		printf("dim is %d \n",layer->dim * BATCHSAMPLES);
+		for (j = 0; j<layer->dim*BATCHSAMPLES;j++){
+			printf(" %lf ", layer->feaElem->yfeatMat[j]);
+		}
+		printf("\n");
+
+	}	
+
+	
+	printf("doing Jv\n");
+	computeDirectionalErrDerivativeofANN(anndef);
+	for ( i = 0; i< numLayers ;i++){
+		LELink layer = anndef->layerList[i];
+
+		printf("dim is %d \n",layer->dim * BATCHSAMPLES);
+		for (j = 0; j<layer->dim*BATCHSAMPLES;j++){
+			printf(" %lf ", layer->gnInfo->Ractivations[j]);
+		}
+		if ( i== (numLayers-1)) {
+			computeHessOfLossFunc(layer,anndef);
+			printf("The value of del L^2.JV\n");
+			for (j = 0; j<layer->dim*BATCHSAMPLES;j++){
+				printf(" %lf ", layer->gnInfo->Ractivations[j]);
+			}
+		}
+
+		printf("\n");
+
+	}	
+
+	exit(0);
+
+
+
+	if (argc != 11 && argc != 13 ){
 		printf("The program expects a minimum of  5 args and a maximum of 6 args : Eg : -C config \n -S traindatafile \n -L traininglabels \n -v validationdata \n -vl validationdataLabels \n optional argument : -T testData \n ");
 	}
 	parseCMDargs(argc, argv);
 	printf("'REACHES HERE'\n" );
 
 
-	int i,j,c;
+	
 	double * ptr  = malloc( sizeof(double));
 	double A[] ={1 ,2, 3};
 	memcpy(ptr, A, sizeof(double)*3);
@@ -1426,6 +1547,10 @@ int main(int argc, char *argv[]){
 		printf(" %lf \n ", ptr[i]);
 	}
 	free (ptr);
+
+
+
+
 	/**
 	c = 0;
 	for (i = 0; i < trainingDataSetSize;i++){
