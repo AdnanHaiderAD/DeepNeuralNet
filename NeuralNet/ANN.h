@@ -20,6 +20,7 @@ typedef struct _MSI *MSLink;
 /*model set info -this struct is needed to compare the error on the validation dataset between two epochs*/
 typedef struct _MSI{
 double crtVal;
+double bestValue;
 double prevCrtVal;
 }MSI;
 
@@ -47,7 +48,6 @@ typedef struct _TrainInfo{
 	double *dbFeaMat; /* dE/db  vector */
 	double *updatedWeightMat; /* stores the velocity in the weight space or accumulates  gradeints of weights*/
 	double *updatedBiasMat;/* stores the velocity in the bias space  or accumulates gradients of biases*/
-	double *labelMat;
 }TrainInfo;
 
 typedef struct _ErrorElem{
@@ -165,6 +165,9 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef);
 
 //-----------------------------------------------------------------------------------------
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
+void fillCache(LELink layer,int dim,Boolean weights);
+void cacheParameters(ADLink anndef);
+void intialiseParameterCaches(ADLink anndef);
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
 /*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec);
