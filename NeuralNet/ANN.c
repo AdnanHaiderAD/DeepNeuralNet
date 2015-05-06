@@ -546,8 +546,6 @@ void initialiseDNN(){
 	}
 
 }
-
-
 void initialise(){
 	printf("initialising DNN\n");
 	setBatchSize(trainingDataSetSize);
@@ -837,15 +835,15 @@ void accumulateLayerGradient(LELink layer,double weight){
 	assert(layer->traininfo->updatedBiasMat != NULL);
 	assert(layer->traininfo->updatedWeightMat != NULL);
 	#ifdef CBLAS
-	cblas_daxpy(layer->srcDim*layer->dim,weight,layer->traininfo->dwFeatMat,1,layer->traininfo->updatedWeightMat,1);
-	cblas_daxpy(layer->dim,weight,layer->traininfo->dbFeaMat,1,layer->traininfo->updatedBiasMat,1);
+	cblas_dcopy(layer->srcDim*layer->dim,layer->traininfo->dwFeatMat,1,layer->traininfo->updatedWeightMat,1);
+	cblas_dcopy(layer->dim,layer->traininfo->dbFeaMat,1,layer->traininfo->updatedBiasMat,1);
 	#else
 	//CPU version
 	int i,j;
 	for (i = 0; i<layer->dim;i++){
-		*(layer->traininfo->updatedBiasMat+i) += layer->traininfo->dbFeaMat[i];
+		*(layer->traininfo->updatedBiasMat+i) = layer->traininfo->dbFeaMat[i];
 		for (j =0; j<layer->srcDim;j++){
-			*(layer->traininfo->updatedWeightMat +i*layer->srcDim +j)	+= layer->traininfo->dwFeatMat[i*layer->srcDim +j];
+			*(layer->traininfo->updatedWeightMat +i*layer->srcDim +j) = layer->traininfo->dwFeatMat[i*layer->srcDim +j];
 		}
 	}
 	#endif
@@ -859,10 +857,6 @@ void accumulateGradientsofANN(ADLink anndef){
 		accumulateLayerGradient(layer,1);
 	}
 }
-
-
-
-
 //-----------------------------------------------------------------------------------------------------------------------------
 /*This section of the code is respoonsible for computing the directional derivative of the error function using forward differentiation*/
 //---------------------------------------------------------------------------------------------------------------------------------
@@ -973,10 +967,10 @@ void fillCache(LELink layer,int dim,Boolean weights){
 	#ifdef CBLAS
 	if (weights){
 		double* paramCache = (double *) getHook(layer->traininfo,1);
-		cblas_dcopy(dim, paramCache, 1, layer->weights, 1);
+		cblas_dcopy(dim,layer->weights, 1,paramCache,1);
 	}else{
 		double* paramCache = (double *) getHook(layer->traininfo,2);
-		cblas_dcopy(dim, paramCache, 1, layer->bias, 1);
+		cblas_dcopy(dim,layer->bias, 1,paramCache,1);
 	}
 	#endif
 }
@@ -1192,12 +1186,45 @@ void TrainDNNGD(){
 //--------------------------------------------------------------------------------------------------------
 /**This section of the code implements HF full batch training**/
 
-void conjugateGradient(Boolean firstEverRun){
+
+void initialiseResidueaAndSearchDirection(ADLink aandef){
+	int i; 
+	LELink layer;
+	for (i = 0; i<anndef->layerNum;i++){
+		layer = anndef->layerList[i];
+		#ifdef CBLAS
+		//ro = A*0 +b 
+		cblas_dcopy(layer->dim*layer->srcDim, layer->traininfo->updatedWeightMat, 1,layer->cgInfo->residueUpdateWeights, 1);
+		cblas_dcopy(layer->dim*layer->srcDim, layer->traininfo->updatedWeightMat, 1,layer->cgInfo->searchDirectionUpdateWeights, 1);
+				
+		cblas_dcopy(layer->dim,layer->traininfo->updatedBiasMat,1,layer->cgInfo->residueUpdateBias,1);
+		cblas_dcopy(layer->dim,layer->traininfo->updatedBiasMat,1,layer->cgInfo->searchDirectionUpdateBias,1);
+
+		//po =-ro
+		cblas_dscal(layer->dim*layer->srcDim,-1,layer->cgInfo->searchDirectionUpdateWeights,1);
+		cblas_dscal(layer->dim,-1,layer->cgInfo->searchDirectionUpdateBias,1);
+		#endif
+	}
+
+}
+
+void runConjugateGradient(Boolean firstEverRun){
+	if (firstEverRun){
+		initialiseResidueaAndSearchDirection(anndef);
+	}
 
 }
 
 void TrainDNNHF(){
 	int currentEpochIdx;
+	double learningrate;
+	currentEpochIdx = 0;
+	learningrate = 0;
+	modelSetInfo = malloc (sizeof(MSI));
+	modelSetInfo->crtVal = 0;
+	modelSetInfo->bestValue = DBL_MAX;
+	modelSetInfo->prevCrtVal = 0;
+	
 	//with the initialisation of weights,check how well DNN performs on validation data
 	setBatchSize(validationDataSetSize);
 	reinitLayerFeaMatrices(anndef);
@@ -1206,22 +1233,27 @@ void TrainDNNHF(){
 	fwdPassOfANN(anndef);
 	printf("successfully performed forward pass of DNN on validation data\n");
 	updatateAcc(validationLabelIdx, anndef->layerList[numLayers-1],BATCHSAMPLES);
-	printf("successfully accumulated counts \n");
-
-	while(currentEpochIdx<=maxEpochNum){
-		/**Step 1: Compute and accumulate gradients**/
-		//load training data into the ANN and perform forward pass
+	printf("successfully accumulated counts  \n");
+	intialiseParameterCaches(anndef);
+	if(modelSetInfo->crtVal<modelSetInfo->bestValue){
+		cacheParameters(anndef);
+		modelSetInfo->bestValue = modelSetInfo->crtVal;
+		printf("successfully updated weight caches\n");
+	}
+	
+	while(terminateSchedNotTrue(currentEpochIdx,learningrate)){
+		/*for each iteration: compute and  accumulate the gradient and then run CG*/
 		setBatchSize(trainingDataSetSize);
 		reinitLayerFeaMatrices(anndef);
 		loadDataintoANN(inputData,labels);
 		fwdPassOfANN(anndef);
-		// run backpropagation and update the parameters:
-		backPropBatch(anndef,TRUE);
+		// run backpropagation and compute gradients
+		backPropBatch(anndef,FALSE);
 		accumulateGradientsofANN(anndef);
 		if (currentEpochIdx == 0){
-			conjugateGradient(TRUE);
+			runConjugateGradient(TRUE);
 		}else{
-			conjugateGradient(FALSE);
+			runConjugateGradient(FALSE);
 		}
 
 
@@ -1235,7 +1267,6 @@ void freeMemoryfromANN(){
 	printf("Start freeing memory\n");
 	if (anndef != NULL){
 		for (i = 0;i<numLayers;i++){
-			printf("LAYER %d \n",i);
 			if (anndef->layerList[i] !=NULL){
 				if (anndef->layerList[i]->feaElem != NULL){
 					if (anndef->layerList[i]->feaElem->yfeatMat !=NULL){
@@ -1267,20 +1298,17 @@ void freeMemoryfromANN(){
 					free (anndef->layerList[i]->bias);
 				}
 				if(anndef->layerList[i]->gnInfo != NULL){
-					printf("%d\n",anndef->layerList[i]->gnInfo ==NULL );
 					if (anndef->layerList[i]->gnInfo->vweights !=NULL){
 						free(anndef->layerList[i]->gnInfo->vweights);
 					}
 					if (anndef->layerList[i]->gnInfo->vbiases !=NULL){
 						free (anndef->layerList[i]->gnInfo->vbiases);
 					}
-					if (anndef->layerList[i]->gnInfo->Ractivations !=NULL);{
+					if (anndef->layerList[i]->gnInfo->Ractivations !=NULL){
 						free(anndef->layerList[i]->gnInfo->Ractivations);
 					}
 					free (anndef->layerList[i]->gnInfo);
 				}
-				printf("Issue 7\n");
-				
 				free (anndef->layerList[i]);
 			}
 		}
@@ -1457,12 +1485,14 @@ int main(int argc, char *argv[]){
 	double labels[] ={1.2,1.2};
 
 
+	/**testting cpoy*/
+	double *T = malloc(sizeof(double)*2);
+	cblas_dcopy(2,labels, 1, T, 1);
+	printf("Copied values are %lf  %lf \n",*T,*(T+1));
+	free(T);	
+
 
 	cblas_dgemv(CblasColMajor,CblasNoTrans,3,3,1,d,3,y2,1,0,result,1);
-
-
-
-	
 	printf("symmetric matrix vector\n");
 	for (i=0;i<3;i++){
 		//y[i] = computeSigmoid(y[i]);
@@ -1484,16 +1514,13 @@ int main(int argc, char *argv[]){
 		LELink layer = anndef->layerList[i];
 		if (i==0){
 			setParameterDirections(V1,b1, layer);
-			free(layer->weights);
-			layer->weights = weights;
+		  cblas_dcopy(layer->dim*layer->srcDim, weights, 1,layer->weights, 1);
+			
 		}	
 		else{
-
 			setParameterDirections( V2,b2, layer);
-			free(layer->weights);
-			layer->weights = weightsT;
-			
-		}  
+			cblas_dcopy(layer->dim*layer->srcDim, weightsT, 1,layer->weights, 1);
+			}  
 		printf("layer id  %d \n",i);
 		
 		
@@ -1541,6 +1568,9 @@ int main(int argc, char *argv[]){
 
 	}	
 
+	
+	
+	freeMemoryfromANN();
 	exit(0);
 
 

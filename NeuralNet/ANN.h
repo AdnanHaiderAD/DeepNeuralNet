@@ -13,6 +13,7 @@ typedef struct _FeatElem *FELink;
 typedef struct _ErrorElem *ERLink;
 typedef struct _TrainInfo *TRLink;
 typedef struct _GaussNewtonProdInfo *GNProdInfo;
+typedef struct _ConjugateGradientInfo *CGInfo;
 typedef struct _MSI *MSLink;
 
 
@@ -31,7 +32,7 @@ typedef struct _ConjugateGradientInfo{
    double *residueUpdateWeights;
    double * residueUpdateBias;
    double *searchDirectionUpdateWeights;
-   double * searchDirectionUpdateBias;
+   double *searchDirectionUpdateBias;
  }ConjuageGradientInfo;
 
 
@@ -74,6 +75,7 @@ typedef struct _LayerElem{
 	ERLink errElem;
 	TRLink traininfo;/*struct that stores the error derivatives with respect to weights and biases */
 	GNProdInfo gnInfo;
+	CGInfo  cgInfo;
 }LayerElem;
 
 /*structure for ANN*/
