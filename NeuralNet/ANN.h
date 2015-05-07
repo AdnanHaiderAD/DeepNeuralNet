@@ -123,6 +123,12 @@ void initialise();
 
 //----------------------------------------------------------------------------------------
 /*this section of the code implements the  forward propagation of a deep neural net **/
+/**this funciton copies one matrix/array into another*/
+void copyMatrixOrVec(double *src, double *dest,int dim);
+/* this function allows the addition of  two matrices or two vectors*/
+void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim,double lambda);
+void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
+void subtractMatrix(double *dyfeat, double* labels, int dim);
 double computeTanh(double x);
 double computeSigmoid(double x);
 void computeNonLinearActOfLayer(LELink layer);
@@ -140,7 +146,6 @@ void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsample
 void computeLossHessSoftMax(LELink layer);
 /*compute del^2L*J where L can be any convex loss function**/
 void computeHessOfLossFunc(LELink layer, ADLink anndef);
-void subtractMatrix(double *dyfeat, double* labels, int dim);
 void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 /**function computes the error derivatives with respect to the weights and biases of the neural net*/
 void backPropBatch(ADLink anndef,Boolean doHessVecProd);
@@ -175,15 +180,27 @@ void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
 void findMaxElement(double *matrix, int row, int col, double *vec);
 /** the function calculates the percentage of the data samples correctly labelled by the DNN*/
 void updatateAcc(double *labels, LELink layer,int dataSize);
-/* this function allows the addition of  two matrices or two vectors*/
-void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim,double lambda);
-void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
 void TrainDNNGD();
 
 //-----------------------------------------------------------------------------------------
+/**This section of the code implements  The conjugate Gradient algorithm **/
+void updateParameterDir(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult);
+void updateResidue(ADLink anndef,double *residueDotProductResult, double *searchDotProductResult);
+void updatedelParameters(double * residueDotProductResult, double *searchDotProductResult);
+void computeSearchDirdotProduct( ADLink anndef,double * searchDotProductResult);
+void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
+void reInitialiseResidueaAndSearchDirection(ADLink anndef);
+void initialiseResidueaAndSearchDirection(ADLink anndef);
+void runConjugateGradient(Boolean firstEverRun);
+
+//------------------------------------------------------------------------------------------
+/*This section of the code performs HF training**/
+void updateNeuralNetParamsHF( ADLink anndef, double lrnRate);
+void TrainDNNHF();
+//------------------------------------------------------------------------------------------
 
 void freeMemoryfromANN();
 /*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
