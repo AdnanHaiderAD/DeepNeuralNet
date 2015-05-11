@@ -76,6 +76,8 @@ typedef struct _LayerElem{
 	TRLink traininfo;/*struct that stores the error derivatives with respect to weights and biases */
 	GNProdInfo gnInfo;
 	CGInfo  cgInfo;
+	//double *bestweights;
+	//double *bestBias;
 }LayerElem;
 
 /*structure for ANN*/
@@ -112,11 +114,11 @@ double drand();
 /* performing the Box Muller transform to map two numbers 
 generated from a uniform distribution to a number from a normal distribution centered at 0 with standard deviation 1 */
 double random_normal();
-void initialiseBias(double *biasVec,int dim, int srcDim);
+void initialiseBias(double *biasVec,int dim, int srcDim,ActFunKind actfunc);
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
 to be inversely proportional to the sqrt(fanin)
 */ 
-void initialiseWeights(double *weightMat,int length,int srcDim);
+void initialiseWeights(double *weightMat,int length,int srcDim,ActFunKind actfunc);
 void initialiseLayer(LELink layer,int i, LELink srcLayer);
 void  initialiseDNN();
 void initialise();
@@ -174,7 +176,7 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef);
 /*This section deals with running schedulers to iteratively update the parameters of the neural net**/
 void fillCache(LELink layer,int dim,Boolean weights);
 void cacheParameters(ADLink anndef);
-void intialiseParameterCaches(ADLink anndef);
+Boolean initialiseParameterCaches(ADLink anndef);
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
 /*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec);
