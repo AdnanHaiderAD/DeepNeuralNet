@@ -1,15 +1,15 @@
 momentum : 0.0
-weightdecay : 0.2
-initLR : 1
-minLR : 0.00005
+weightdecay : 0
+initLR : 0.01
+minLR : 0.001
 threshold : 0.1234
-maxEpochNum : 100
+maxEpochNum : 500
 targetDim : 10
 inputDim : 784
-numLayers : 3
-trainingDataSetSize : 30000
+numLayers : 1
+trainingDataSetSize : 3000
 validationDataSetSize : 10000
-hiddenUnitsPerLayer : 600,300
-activationfunctionsPerLayer : TANH,TANH,SOFTMAX
+hiddenUnitsPerLayer : 0
+activationfunctionsPerLayer : SOFTMAX
 Errfunc : XENT
 

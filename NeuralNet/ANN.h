@@ -76,8 +76,8 @@ typedef struct _LayerElem{
 	TRLink traininfo;/*struct that stores the error derivatives with respect to weights and biases */
 	GNProdInfo gnInfo;
 	CGInfo  cgInfo;
-	//double *bestweights;
-	//double *bestBias;
+	double *bestweights;
+	double *bestBias;
 }LayerElem;
 
 /*structure for ANN*/
@@ -153,6 +153,27 @@ void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 void backPropBatch(ADLink anndef,Boolean doHessVecProd);
 
 
+
+//-----------------------------------------------------------------------------------------
+/*This section deals with running schedulers to iteratively update the parameters of the neural net**/
+void fillCache(LELink layer,int dim,Boolean weights);
+void cacheParameters(ADLink anndef);
+Boolean initialiseParameterCaches(ADLink anndef);
+void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
+/*The function finds the most active node in the output layer for each sample*/
+void findMaxElement(double *matrix, int row, int col, double *vec);
+/** the function calculates the percentage of the data samples correctly labelled by the DNN*/
+void updatateAcc(double *labels, LELink layer,int dataSize);
+void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
+void updateLearningRate(int currentEpochIdx, double *lrnRate);
+Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
+void printWeights(ADLink anndef, int i);
+void printYfeat(ADLink anndef, int id);
+void printMatrix(double *matrix,int row,int col);
+void printDBWeights(ADLink anndef, int i);
+
+void TrainDNNGD();
+
 //----------------------------------------------------------------------------------------------------------
 /**this segment of the code is reponsible for accumulating peviously computed  gradients **/
 void setHook(Ptr m, Ptr ptr,int incr);
@@ -172,20 +193,7 @@ void computeVweightsProjection(LELink layer);
 void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
 void computeDirectionalErrDerivativeofANN(ADLink anndef);
 
-//-----------------------------------------------------------------------------------------
-/*This section deals with running schedulers to iteratively update the parameters of the neural net**/
-void fillCache(LELink layer,int dim,Boolean weights);
-void cacheParameters(ADLink anndef);
-Boolean initialiseParameterCaches(ADLink anndef);
-void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
-/*The function finds the most active node in the output layer for each sample*/
-void findMaxElement(double *matrix, int row, int col, double *vec);
-/** the function calculates the percentage of the data samples correctly labelled by the DNN*/
-void updatateAcc(double *labels, LELink layer,int dataSize);
-void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
-void updateLearningRate(int currentEpochIdx, double *lrnRate);
-Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
-void TrainDNNGD();
+
 
 //-----------------------------------------------------------------------------------------
 /**This section of the code implements  The conjugate Gradient algorithm **/
@@ -195,6 +203,7 @@ void updatedelParameters(double * residueDotProductResult, double *searchDotProd
 void computeSearchDirdotProduct( ADLink anndef,double * searchDotProductResult);
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
 void reInitialiseResidueaAndSearchDirection(ADLink anndef);
+void normaliseSearchDirections(ADLink anndef);
 void initialiseResidueaAndSearchDirection(ADLink anndef);
 void runConjugateGradient(Boolean firstEverRun);
 
