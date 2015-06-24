@@ -1,8 +1,8 @@
 momentum : 0.0
 weightdecay : 0
-initLR : 0.01
-minLR : 0.001
-threshold : 0.1234
+initLR : 0.1
+minLR : 0.00000001
+threshold : 0.005
 maxEpochNum : 500
 targetDim : 10
 inputDim : 784

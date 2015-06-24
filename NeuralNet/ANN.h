@@ -92,7 +92,7 @@ typedef struct _ANNdef{
 //---------------------------------------------------------------------------------------
 /**This section of the code deals with parsing Command Line arguments**/
 void cleanString(char *Name);
-void loadLabels(double *labelMat,char*filepath,char *datatype);
+void loadLabels(double *labelMat, double *labels,char*filepath,char *datatype);
 void loadMatrix(double *matrix,char *filepath, char *datatype);
 void parseCfg(char * filepath);
 void parseCMDargs(int argc, char *argv[]);
@@ -130,7 +130,7 @@ void copyMatrixOrVec(double *src, double *dest,int dim);
 /* this function allows the addition of  two matrices or two vectors*/
 void addMatrixOrVec(double *weightMat, double* dwFeatMat, int dim,double lambda);
 void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
-void subtractMatrix(double *dyfeat, double* labels, int dim);
+void subtractMatrix(double *dyfeat, double* labels, int dim, double lambda);
 double computeTanh(double x);
 double computeSigmoid(double x);
 void computeNonLinearActOfLayer(LELink layer);
@@ -160,10 +160,11 @@ void fillCache(LELink layer,int dim,Boolean weights);
 void cacheParameters(ADLink anndef);
 Boolean initialiseParameterCaches(ADLink anndef);
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
+double computeLogLikelihood(double* output, int batchsamples, int dim , double* labels);
 /*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec);
 /** the function calculates the percentage of the data samples correctly labelled by the DNN*/
-void updatateAcc(double *labels, LELink layer,int dataSize);
+double updatateAcc(double *labels, LELink layer,int dataSize);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
@@ -197,13 +198,18 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef);
 
 //-----------------------------------------------------------------------------------------
 /**This section of the code implements  The conjugate Gradient algorithm **/
-void updateParameterDir(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult);
+//Some additional functions
+void normaliseSearchDirections(ADLink anndef);
+void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
+void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult);
+void normofGV(ADLink anndef);
+//---------------
+void updateParameterDirection(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult);
 void updateResidue(ADLink anndef,double *residueDotProductResult, double *searchDotProductResult);
 void updatedelParameters(double * residueDotProductResult, double *searchDotProductResult);
-void computeSearchDirdotProduct( ADLink anndef,double * searchDotProductResult);
+void computeSearchDirMatrixProduct( ADLink anndef,double * searchVecMatrixVecProductResult);
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
 void reInitialiseResidueaAndSearchDirection(ADLink anndef);
-void normaliseSearchDirections(ADLink anndef);
 void initialiseResidueaAndSearchDirection(ADLink anndef);
 void runConjugateGradient(Boolean firstEverRun);
 
@@ -214,5 +220,9 @@ void TrainDNNHF();
 //------------------------------------------------------------------------------------------
 
 void freeMemoryfromANN();
+void printLayerMatrices(ADLink anndef);
+void printLayerDWMatrices(ADLink anndef);
+void printVector(double * vector , int dim);
+void UnitTest_computeGradientDotProd();
 /*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
 void unitTests();
