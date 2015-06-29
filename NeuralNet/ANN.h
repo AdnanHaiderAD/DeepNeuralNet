@@ -168,11 +168,6 @@ double updatateAcc(double *labels, LELink layer,int dataSize);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
-void printWeights(ADLink anndef, int i);
-void printYfeat(ADLink anndef, int id);
-void printMatrix(double *matrix,int row,int col);
-void printDBWeights(ADLink anndef, int i);
-
 void TrainDNNGD();
 
 //----------------------------------------------------------------------------------------------------------
@@ -181,6 +176,13 @@ void setHook(Ptr m, Ptr ptr,int incr);
 Ptr getHook(Ptr m,int incr);
 void accumulateLayerGradient(LELink layer,double weight);
 void accumulateGradientsofANN(ADLink anndef);
+
+//-----------------------------------------------------------------------------------------------------------
+//additional functions just in case 
+void normaliseSearchDirections(ADLink anndef);
+void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
+void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult);
+void normofGV(ADLink anndef);
 
 //------------------------------------------------------------------------------------------------------------
 /*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
@@ -193,29 +195,33 @@ void computeRactivations(LELink layer);
 void computeVweightsProjection(LELink layer);
 void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
 void computeDirectionalErrDerivativeofANN(ADLink anndef);
-
+void normofDELW(ADLink anndef);
+//--------------------------------------------------------------------------------------------------------------
+void updateNeuralNetParamsHF( ADLink anndef);
 
 
 //-----------------------------------------------------------------------------------------
 /**This section of the code implements  The conjugate Gradient algorithm **/
-//Some additional functions
-void normaliseSearchDirections(ADLink anndef);
-void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
-void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult);
-void normofGV(ADLink anndef);
-//---------------
 void updateParameterDirection(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult);
-void updateResidue(ADLink anndef,double *residueDotProductResult, double *searchDotProductResult);
+void updateResidue(ADLink anndef);
 void updatedelParameters(double * residueDotProductResult, double *searchDotProductResult);
 void computeSearchDirMatrixProduct( ADLink anndef,double * searchVecMatrixVecProductResult);
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
-void reInitialiseResidueaAndSearchDirection(ADLink anndef);
+/*This  sub section of the code is responsible for computing the directional derivative of the error function using forward differentiation*/
+void addTikhonovDamping(ADLink anndef);
+void updateRactivations(LELink layer);
+void computeRactivations(LELink layer);
+void computeVweightsProjection(LELink layer);
+void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
+void computeDirectionalErrDerivativeofANN(ADLink anndef);
+void setParameterDirections(double * weights, double* bias, LELink layer);
+void setSearchDirectionCG(ADLink anndef, Boolean Parameter);
+
 void initialiseResidueaAndSearchDirection(ADLink anndef);
 void runConjugateGradient(Boolean firstEverRun);
 
 //------------------------------------------------------------------------------------------
 /*This section of the code performs HF training**/
-void updateNeuralNetParamsHF( ADLink anndef, double lrnRate);
 void TrainDNNHF();
 //------------------------------------------------------------------------------------------
 
@@ -224,5 +230,10 @@ void printLayerMatrices(ADLink anndef);
 void printLayerDWMatrices(ADLink anndef);
 void printVector(double * vector , int dim);
 void UnitTest_computeGradientDotProd();
+void printWeights(ADLink anndef, int i);
+void printYfeat(ADLink anndef, int id);
+void printMatrix(double *matrix,int row,int col);
+void printDBWeights(ADLink anndef, int i);
+
 /*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
 void unitTests();
