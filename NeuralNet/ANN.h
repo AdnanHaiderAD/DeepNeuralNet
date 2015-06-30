@@ -178,37 +178,28 @@ void accumulateLayerGradient(LELink layer,double weight);
 void accumulateGradientsofANN(ADLink anndef);
 
 //-----------------------------------------------------------------------------------------------------------
-//additional functions just in case 
+//additional functions to check CG sub-routines just in case 
 void normaliseSearchDirections(ADLink anndef);
 void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
 void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult);
 void normofGV(ADLink anndef);
-
-//------------------------------------------------------------------------------------------------------------
-/*This section of the code is respoonsible for computing the directional derivative of the error function with respect to weights and biases*/
-void setParameterDirections(double *weights, double* bias, LELink layer);
-/**this function computes R(z) = h'(a)R(a)  : we assume h'a is computed during computation of gradient**/
-void updateRactivations(LELink layer);
-/** this function compute \sum wji R(zi)-previous layer and adds it to R(zj)**/
-void computeRactivations(LELink layer);
-/**this function computes sum vji xi */
-void computeVweightsProjection(LELink layer);
-void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
-void computeDirectionalErrDerivativeofANN(ADLink anndef);
 void normofDELW(ADLink anndef);
-//--------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
+
+
+//-------------------------------------------------------------------------------------------------------------------
+/*This section of the code performs HF training**/
 void updateNeuralNetParamsHF( ADLink anndef);
-
-
-//-----------------------------------------------------------------------------------------
-/**This section of the code implements  The conjugate Gradient algorithm **/
-void updateParameterDirection(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult);
+//-------------------------------------------------------
+/**This section of the code implements the small sub routinesof the  conjugate Gradient algorithm **/
+void updateParameterDirection(ADLink anndef,double beta);
 void updateResidue(ADLink anndef);
-void updatedelParameters(double * residueDotProductResult, double *searchDotProductResult);
+void updatedelParameters(double alpha);
 void computeSearchDirMatrixProduct( ADLink anndef,double * searchVecMatrixVecProductResult);
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
-/*This  sub section of the code is responsible for computing the directional derivative of the error function using forward differentiation*/
 void addTikhonovDamping(ADLink anndef);
+//------------------------------------------------------
+/* the following routines compute the directional derivative using forward differentiation*/
 void updateRactivations(LELink layer);
 void computeRactivations(LELink layer);
 void computeVweightsProjection(LELink layer);
@@ -216,13 +207,13 @@ void computeDirectionalErrDrvOfLayer(LELink layer, int layerid);
 void computeDirectionalErrDerivativeofANN(ADLink anndef);
 void setParameterDirections(double * weights, double* bias, LELink layer);
 void setSearchDirectionCG(ADLink anndef, Boolean Parameter);
-
+//-----------------------------------------------------
 void initialiseResidueaAndSearchDirection(ADLink anndef);
 void runConjugateGradient(Boolean firstEverRun);
-
-//------------------------------------------------------------------------------------------
-/*This section of the code performs HF training**/
 void TrainDNNHF();
+
+//-------------------------------------------------------------------------------------------------------------------
+
 //------------------------------------------------------------------------------------------
 
 void freeMemoryfromANN();

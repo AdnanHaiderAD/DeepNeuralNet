@@ -733,12 +733,12 @@ void fwdPassOfANN(ADLink anndef){
 				for (i = 0; i< anndef->layerNum;i++){
 					layer = anndef->layerList[i];
 					computeLinearActivation(layer);
-					printf("activation of layer %d before >>>>>",i);
-					printMatrix(layer->feaElem->yfeatMat,BATCHSAMPLES,layer->dim);
-					printf("activation of layer %d after >>>>>",i);
+					//printf("activation of layer %d before >>>>>",i);
+					//printMatrix(layer->feaElem->yfeatMat,BATCHSAMPLES,layer->dim);
+					//printf("activation of layer %d after >>>>>",i);
 					
 					computeNonLinearActOfLayer(layer);
-					printMatrix(layer->feaElem->yfeatMat,BATCHSAMPLES,layer->dim);
+					//printMatrix(layer->feaElem->yfeatMat,BATCHSAMPLES,layer->dim);
 	
 				}
 				break;	
@@ -1158,9 +1158,10 @@ void TrainDNNGD(){
 
 }
 
-//----------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
 /**this segment of the code is reponsible for accumulating the gradients **/
-//---------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+
 void setHook(Ptr m, Ptr ptr,int incr){
 	Ptr *p;
 	p = (Ptr *) m; 
@@ -1178,6 +1179,9 @@ void accumulateLayerGradient(LELink layer,double weight){
 	assert(layer->traininfo->updatedWeightMat != NULL);
 	copyMatrixOrVec(layer->traininfo->dwFeatMat, layer->traininfo->updatedWeightMat,layer->srcDim*layer->dim);
 	copyMatrixOrVec(layer->traininfo->dbFeaMat, layer->traininfo->updatedBiasMat,layer->dim);
+	scaleMatrixOrVec(layer->traininfo->updatedWeightMat, -1 ,layer->dim*layer->srcDim);
+	scaleMatrixOrVec(layer->traininfo->updatedBiasMat, -1 ,layer->dim);
+		
 	
 }
 
@@ -1190,8 +1194,10 @@ void accumulateGradientsofANN(ADLink anndef){
 	}
 }
 
-//----------------------------------------------------------------------------------------------------------------------------
-//additional functions just in case 
+//----------------------------------------------------------------------------------------------------------------------------------
+//additional functions to check CG sub-routines just in case 
+//----------------------------------------------------------------------------------------------------------------------------------
+
 void normaliseSearchDirections(ADLink anndef){
 	int i; 
 	LELink layer;
@@ -1213,6 +1219,38 @@ void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient){
 	}	
 
 }
+void computeNormOfGradient(ADLink anndef){
+	int i; 
+	double weightsum = 0;
+	double biasSum = 0 ;
+	LELink layer;
+	for (i = 0; i<anndef->layerNum;i++){
+		layer = anndef->layerList[i];
+		#ifdef CBLAS
+		weightsum+= cblas_ddot(layer->dim*layer->srcDim,layer->traininfo->dwFeatMat,1,layer->traininfo->dwFeatMat,1);
+		biasSum += cblas_ddot(layer->dim,layer->traininfo->dbFeaMat,1,layer->traininfo->dbFeaMat,1);
+		#endif
+	
+	}
+	printf( " The norm  of gradient is %lf %lf  %lf ",weightsum, biasSum,weightsum+biasSum);
+}
+
+void computeNormOfAccuGradient(ADLink anndef){
+	int i; 
+	double weightsum = 0;
+	double biasSum = 0 ;
+	LELink layer;
+	for (i = 0; i<anndef->layerNum;i++){
+		layer = anndef->layerList[i];
+		#ifdef CBLAS
+		weightsum+= cblas_ddot(layer->dim*layer->srcDim,layer->traininfo->updatedWeightMat,1,layer->traininfo->updatedWeightMat,1);
+		biasSum += cblas_ddot(layer->dim,layer->traininfo->updatedBiasMat,1,layer->traininfo->updatedBiasMat,1);
+		#endif
+	
+	}
+	printf( " The norm  of gradient is %lf %lf  %lf ",weightsum, biasSum,weightsum+biasSum);
+}
+
 void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult){
 	int i; 
 	double weightsum = 0;
@@ -1258,8 +1296,9 @@ void normofDELW(ADLink anndef){
 	}
 	printf("the norm of del W is %lf %lf \n", weightsum, biasSum);
 }
-//-----------------------------------------------------------------------------------
-
+//----------------------------------------------------------------------------------------------------------------------------------
+/* This section of the code implements HF training*/
+//----------------------------------------------------------------------------------------------------------------------------------
 void updateNeuralNetParamsHF( ADLink anndef){
 	int i;
 	LELink layer;
@@ -1269,26 +1308,21 @@ void updateNeuralNetParamsHF( ADLink anndef){
 		addMatrixOrVec(layer->cgInfo->delbiasUpdate,layer->bias,layer->dim,1);
 	}
 }
+//-----------------------------------------------------------------------------------
+/**This section of the code implements the small sub routinesof the  conjugate Gradient algorithm **/
 
 
-//--------------------------------------------------------------------------------------------------------------------------------
-/**This section of the code implements  The conjugate Gradient algorithm **/
-//----------------------------------------------------------------------------------------------------------------------------------
-
-void updateParameterDirection(ADLink anndef,double * residueDotProductResult, double *prevresidueDotProductResult){
+void updateParameterDirection(ADLink anndef,double beta){
 	int i; 
 	LELink layer;
-	double beta_w = residueDotProductResult[0]/prevresidueDotProductResult[0];
-	double beta_b = residueDotProductResult[1]/prevresidueDotProductResult[1];
-	printf("BETA IS %lf  %lf  residue result %lf %lf prev residue %lf %lf>>>>>>>>>>>>>>>>>>>>>>>>>\n",beta_w,beta_b,residueDotProductResult[0],residueDotProductResult[1],prevresidueDotProductResult[0],prevresidueDotProductResult[1]);
-
+	
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
 		//first we set p_K+1 = beta  p_k then we set p_k+1+=r_k+1
-		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights,beta_w,layer->dim*layer->srcDim);
+		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights,beta,layer->dim*layer->srcDim);
 		addMatrixOrVec(layer->cgInfo->residueUpdateWeights,layer->cgInfo->searchDirectionUpdateWeights,layer->dim*layer->srcDim,1);
 		
-		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias,beta_b,layer->dim);
+		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias,beta,layer->dim);
 		addMatrixOrVec(layer->cgInfo->residueUpdateBias,layer->cgInfo->searchDirectionUpdateBias,layer->dim,1);
 	}	
 }
@@ -1297,12 +1331,12 @@ void updateResidue(ADLink anndef){
 	int i; 
 	LELink layer;
 	//set del w
-	setSearchDirectionCG(anndef,TRUE);
+	setSearchDirectionCG(anndef,FALSE);
 	// compute Jv i.e 
 	computeDirectionalErrDerivativeofANN(anndef);
 	//compute J^T del L^2 J v i.e A del_w_k+1
 	backPropBatch(anndef,TRUE);
-	addTikhonovDamping(anndef);
+	//addTikhonovDamping(anndef);
 	//residue r_k+1 = b - A del w_k+1
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
@@ -1316,18 +1350,13 @@ void updateResidue(ADLink anndef){
 		addMatrixOrVec(layer->traininfo->updatedBiasMat,layer->cgInfo->residueUpdateBias,layer->dim,1);
 	}	
 }	
-
-void updatedelParameters(double * residueDotProductResult, double *searchDotProductResult){
+void updatedelParameters(double alpha){
 	int i; 
 	LELink layer;
-	double alpha_w = residueDotProductResult[0]/searchDotProductResult[0];
-	double alpha_b = residueDotProductResult[1]/searchDotProductResult[1];
-	printf("AlPHA IS %lf  %lf residueDotProductResult %lf %lf search dotproduct result %lf %lf  >>>>>>>>>>>>>>>>>>>>>>>>>\n",alpha_w,alpha_b, residueDotProductResult[0],residueDotProductResult[1], searchDotProductResult[0],searchDotProductResult[1]);
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
-		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights,layer->cgInfo->delweightsUpdate,layer->dim*layer->srcDim,alpha_w);
-		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias,layer->cgInfo->delbiasUpdate,layer->dim,alpha_b);
-		
+		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights,layer->cgInfo->delweightsUpdate,layer->dim*layer->srcDim,alpha);
+		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias,layer->cgInfo->delbiasUpdate,layer->dim,alpha);
 	}		
 			
 }
@@ -1343,11 +1372,9 @@ void computeSearchDirMatrixProduct( ADLink anndef,double * searchVecMatrixVecPro
 		biasSum += cblas_ddot(layer->dim,layer->cgInfo->searchDirectionUpdateBias,1,layer->traininfo->dbFeaMat,1);
 		#endif
 	}	
- 	searchVecMatrixVecProductResult[0] = weightsum;
-	searchVecMatrixVecProductResult[1] = biasSum;
+ 	*searchVecMatrixVecProductResult= weightsum + biasSum;
 	
 }
-
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult){
 	int i; 
 	double weightsum = 0;
@@ -1361,14 +1388,9 @@ void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult){
 		#endif
 	
 	}
-	residueDotProductResult[0] = weightsum;
-	residueDotProductResult[1] = biasSum;
-
+	*residueDotProductResult = weightsum + biasSum;
+	
 }
-//-----------------------------------------------------------------------------------------------------------------------------
-/*This section of the code is responsible for computing the directional derivative of the error function using forward differentiation*/
-
-
 void addTikhonovDamping(ADLink anndef){
 	int i; 
 	LELink layer;
@@ -1378,7 +1400,8 @@ void addTikhonovDamping(ADLink anndef){
 		addMatrixOrVec(layer->gnInfo->vbiases,layer->traininfo->dbFeaMat,layer->dim,weightdecay);
 	}		
 }
-
+//-----------------------------------------------------------------------------------
+/* the following routines compute the directional derivative using forward differentiation*/
 
 /**this function computes R(z) = h'(a)R(a)  : we assume h'a is computed during computation of gradient**/
 void updateRactivations(LELink layer){
@@ -1390,7 +1413,6 @@ void updateRactivations(LELink layer){
 				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (layer->feaElem->yfeatMat[i])*(1-layer->feaElem->yfeatMat[i]);
 				break;
 			case TANH:
-				printf(" fea Elem : %lf   R activation %lf nd result %lf \n",layer->feaElem->yfeatMat[i],layer->gnInfo->Ractivations[i], layer->gnInfo->Ractivations[i]* (1 -layer->feaElem->yfeatMat[i]*layer->feaElem->yfeatMat[i]));
 				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (1 -layer->feaElem->yfeatMat[i]*layer->feaElem->yfeatMat[i]) ; 
 				break;
 			default :
@@ -1413,8 +1435,6 @@ void computeRactivations(LELink layer){
 	#endif
 	addMatrixOrVec(buffer, layer->gnInfo->Ractivations,BATCHSAMPLES*layer->dim, 1);
 	free(buffer);
-	
-
 }
 
 /**this function computes sum vji xi */
@@ -1427,30 +1447,29 @@ void computeVweightsProjection(LELink layer){
 		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->gnInfo->vweights, layer->srcDim, layer->feaElem->xfeatMat, layer->srcDim, 0, layer->gnInfo->Ractivations, layer->dim);
 	#endif
 }
+
 void computeDirectionalErrDrvOfLayer(LELink layer, int layerid){
 	if (layerid == 0){
 		/**compute sum vji xi **/
 		computeVweightsProjection(layer);
-		printf("printing R activations before layer id %d \n",layer->id);
-		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
+		//printf("printing R activations before layer id %d \n",layer->id);
+		//printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
 
 		/** compute R(z) = h'(a)* R(a)**/
 		//note h'(a) is already computed during backprop of gradients;
 		updateRactivations(layer);
-		printf("printing R activations after layer id %d \n",layer->id);
-		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
-
-
+		//printf("printing R activations after layer id %d \n",layer->id);
+		//printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
 	}else{
 		/**R(zk) = sum vkz zj**/;
 		computeVweightsProjection(layer);
-		printf("printing R activations before layer id %d \n",layer->id);
-		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
+		//printf("printing R activations before layer id %d \n",layer->id);
+		//printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
 
 		/** R(zk) += sum wkj Rj **/
 		computeRactivations(layer);
-		printf("printing R activations after layer id %d \n",layer->id);
-		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
+		//printf("printing R activations after layer id %d \n",layer->id);
+		//printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
 		if (layer->role != OUTPUT){
 			updateRactivations(layer);
 		}
@@ -1485,7 +1504,9 @@ void setSearchDirectionCG(ADLink anndef, Boolean Parameter){
 		}
 	}
 }
-//-----------------------------------------------------------------------------------------------------------------------------------------
+
+
+//-----------------------------------------------------------------------------------
 
 void initialiseResidueaAndSearchDirection(ADLink anndef){
 	int i; 
@@ -1498,79 +1519,58 @@ void initialiseResidueaAndSearchDirection(ADLink anndef){
 		
 		copyMatrixOrVec(layer->traininfo->updatedBiasMat,layer->cgInfo->residueUpdateBias,layer->dim);
 		copyMatrixOrVec(layer->traininfo->updatedBiasMat,layer->cgInfo->searchDirectionUpdateBias,layer->dim);
-		
-				
-		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights, -1 ,layer->dim*layer->srcDim);
-		scaleMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias, -1 ,layer->dim);
-
-		scaleMatrixOrVec(layer->cgInfo->residueUpdateWeights, -1 ,layer->dim*layer->srcDim);
-		scaleMatrixOrVec(layer->cgInfo->residueUpdateBias, -1 ,layer->dim);
 	}
 }
 
 void runConjugateGradient(Boolean firstEverRun){
 	int numberofRuns = 0;
-	double *residueDotProductResult;
-	double *prevresidueDotProductResult;
-	double *searchVecMatrixVecProductResult;
-	residueDotProductResult = malloc(sizeof(double)*2);
-	prevresidueDotProductResult = malloc(sizeof(double)*2);
-	searchVecMatrixVecProductResult = malloc(sizeof(double)*2);	
-	STOP =FALSE;
-  
+	double residueDotProductResult = 0;
+	double prevresidueDotProductResult = 0;
+	double searchVecMatrixVecProductResult = 0;
+	double alpha = 0;
+	double beta = 0;
+	
 	initialiseResidueaAndSearchDirection(anndef);
 	while(numberofRuns < maxNumOfCGruns){
 		printf("RUN  %d >>>>>>>>>>>>>>>>>>>>>\n",numberofRuns);
 		//----Compute Gauss Newton Matrix product	
 		//set v
-		setSearchDirectionCG(anndef,TRUE);
+		if(numberofRuns==0){
+			setSearchDirectionCG(anndef,TRUE);
+		}else{
+			setSearchDirectionCG(anndef,FALSE);
+		}
+		
+		//setSearchTemDirectionCG(anndef);
 		// compute Jv i.e 
 		computeDirectionalErrDerivativeofANN(anndef);
 		//compute J^T del L^2 J v i.e A p_k
 		backPropBatch(anndef,TRUE);
-		addTikhonovDamping(anndef);
+		//addTikhonovDamping(anndef);
 		//---------------------------
 		//compute r_k^T r_k
-		computeResidueDotProduct(anndef, residueDotProductResult);
+		computeResidueDotProduct(anndef, &residueDotProductResult);
 		//printf("r_k^T r_k is %lf %lf \n",residueDotProductResult[0],residueDotProductResult[1]);
 		//compute p_k^T A p_k
-		computeSearchDirMatrixProduct(anndef,searchVecMatrixVecProductResult);
-	//	printf("p_k^T Ap_k is %lf %lf \n",searchVecMatrixVecProductResult[0],searchVecMatrixVecProductResult[1]);
-		//update del w_k+1  = del w_k + alpha pk
-		//printf(" norm of del W \n");
-		//normofDELW(anndef);
-		updatedelParameters(residueDotProductResult,searchVecMatrixVecProductResult);
-	//	printf(" norm of del W AFTER UPDATE \n");
-		//normofDELW(anndef);
-		//update r_k+1 = b- A del_w_k+1
+		computeSearchDirMatrixProduct(anndef,&searchVecMatrixVecProductResult);
+		alpha = residueDotProductResult/searchVecMatrixVecProductResult;
+
+		updatedelParameters(alpha);
 		updateResidue(anndef);
-		
-		prevresidueDotProductResult[0] = residueDotProductResult[0];
-		prevresidueDotProductResult[1] = residueDotProductResult[1];
-		residueDotProductResult[0]= 0;
-		residueDotProductResult[1]= 0;
-		
+		printf("residue norm and pkApk  %lf %lf \n",residueDotProductResult,searchVecMatrixVecProductResult);
+		prevresidueDotProductResult = residueDotProductResult;
 		//compute r_(k+1)^T r_(k+1)
-		computeResidueDotProduct(anndef, residueDotProductResult);
-		//printf("r_k+1^T r_k+1 is %lf %lf \n",residueDotProductResult[0],residueDotProductResult[1]);
+		computeResidueDotProduct(anndef, &residueDotProductResult);
+		beta = residueDotProductResult/prevresidueDotProductResult;
 		//compute p_(k+1) = r_k+1 + beta p_k
-		updateParameterDirection(anndef,residueDotProductResult,prevresidueDotProductResult);
-		 //printf("Norm of pk+1 %lf %lf -- \n",dotPro[0],cblas_ddot(7840,anndef->layerList[0]->cgInfo->searchDirectionUpdateWeights,1,anndef->layerList[0]->cgInfo->searchDirectionUpdateWeights,1));
+		updateParameterDirection(anndef,beta);
 		numberofRuns+=1;
 		int i;
+		printf("alpha  and beta  is %lf %lf \n", alpha,beta);
 		
-		//printLayerDWMatrices(anndef);
-
 	}
-	
-	free(residueDotProductResult);
-	free(prevresidueDotProductResult);
-	free(searchVecMatrixVecProductResult);
 }
 
-//------------------------------------------------------------------------------------------------------------------
-/*This section of the code performs HF training**/
-//-------------------------------------------------------------------------------------------------------------------
 void TrainDNNHF(){
 	int currentEpochIdx;
 	double learningrate;
@@ -1666,8 +1666,9 @@ void TrainDNNHF(){
 	free(log_likelihood);
 
 }
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
 
-//========================================================================================================
 void freeMemoryfromANN(){
 	int i;
 	printf("Start freeing memory\n");
@@ -1934,6 +1935,7 @@ int main(int argc, char *argv[]){
 	targetDim =10;
 	doHF =TRUE;
 	useGNMatrix =TRUE;
+	maxNumOfCGruns =10;
 	
 	
 
@@ -1966,7 +1968,7 @@ int main(int argc, char *argv[]){
 	//fwdPassOfANN(anndef);
 	
 
-
+	/*
 	copyMatrixOrVec(vweightsH,anndef->layerList[0]->gnInfo->vweights,inputDim*anndef->layerList[0]->dim);
 	printf("vweights of hidden layer\n");
 	printMatrix(anndef->layerList[0]->gnInfo->vweights,10,10);
@@ -1982,20 +1984,22 @@ int main(int argc, char *argv[]){
 	copyMatrixOrVec(vbaisO,anndef->layerList[1]->gnInfo->vbiases,anndef->layerList[1]->dim);
 	printf("vbias of hidden layer\n");
 	printMatrix(anndef->layerList[1]->gnInfo->vbiases,1,10);
-
+	*/
 	printf("computing and printing JV>>>>>>>>>>>>>>>>>\n");
 	fwdPassOfANN(anndef);
-	double loglik =computeLogLikelihood(anndef->layerList[numLayers-1]->feaElem->yfeatMat,BATCHSAMPLES,anndef->layerList[numLayers-1]->dim,lab);	
-	printf("log like %lf\n>>>>",loglik);
-
-	computeDirectionalErrDerivativeofANN(anndef);
-	
-
-	
+	//double loglik =computeLogLikelihood(anndef->layerList[numLayers-1]->feaElem->yfeatMat,BATCHSAMPLES,anndef->layerList[numLayers-1]->dim,lab);	
+	//printf("log like %lf\n>>>>",loglik);
 	printf("Computing derivative  >>>>>>>>>>>>>>>\n");
 	
-	backPropBatch(anndef,TRUE);
+	backPropBatch(anndef,FALSE);
+	accumulateGradientsofANN(anndef);
+	computeNormOfGradient(anndef);
+	computeNormOfAccuGradient(anndef);
 
+	runConjugateGradient(TRUE);
+
+		
+	/*
 	printf("PRINTING JV >>>>>>>>>>>>>>>>>>>>>>\n");
 	printf("vbias of hidden layer\n");
 	printMatrix(anndef->layerList[1]->gnInfo->Ractivations,BATCHSAMPLES,anndef->layerList[1]->dim);
@@ -2017,7 +2021,7 @@ int main(int argc, char *argv[]){
 	printf("de/db of output layer\n");
 	printMatrix(anndef->layerList[1]->traininfo->dbFeaMat,1,10);
 
-
+	*/
 
 
 
