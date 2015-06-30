@@ -769,7 +769,8 @@ void computeActivationDrv (LELink layer){
 		case TANH:
 			//CPU verion
 		  for (i = 0; i<layer->dim*BATCHSAMPLES;i++){
-				layer->feaElem->yfeatMat[i] = 4*layer->feaElem->yfeatMat[i]*(1-layer->feaElem->yfeatMat[i]);
+				layer->feaElem->yfeatMat[i] = 1- layer->feaElem->yfeatMat[i]*layer->feaElem->yfeatMat[i];
+				//4*layer->feaElem->yfeatMat[i]*(1-layer->feaElem->yfeatMat[i]);
 			}
 			break;
 		default:
@@ -801,17 +802,10 @@ void computeLossHessSoftMax(LELink layer){
 	for (i = 0 ; i< BATCHSAMPLES; i++){
 		/**extract error directional derivative for a single sample*/ 
 		copyMatrixOrVec(layer->gnInfo->Ractivations+i*(layer->dim),RactivationVec,layer->dim);
-		printf("Printing sample %d>>>>>>>",i);
-		printVector(RactivationVec,layer->dim);
-
 		copyMatrixOrVec(layer->feaElem->yfeatMat+i*(layer->dim),yfeatVec,layer->dim);
-		printVector(yfeatVec,layer->dim);
-
-		
 		#ifdef CBLAS
 		//compute dia(yfeaVec - yfeacVec*yfeaVec)'
 		cblas_dgemm(CblasColMajor,CblasNoTrans,CblasNoTrans,layer->dim,layer->dim,1,-1,yfeatVec,layer->dim,yfeatVec,1,0,diaP,layer->dim);
-		printMatrix(diaP,layer->dim,layer->dim);
 		for (j = 0; j<layer->dim;j++){
 			diaP[j*(layer->dim+1)] += yfeatVec[j];
 		}
@@ -1394,13 +1388,14 @@ void updateRactivations(LELink layer){
 		switch (layer->actfuncKind){
 			case SIGMOID:
 				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (layer->feaElem->yfeatMat[i])*(1-layer->feaElem->yfeatMat[i]);
-		
+				break;
 			case TANH:
-				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (layer->feaElem->yfeatMat[i])*(1-layer->feaElem->yfeatMat[i])*4 ; 
-		
+				printf(" fea Elem : %lf   R activation %lf nd result %lf \n",layer->feaElem->yfeatMat[i],layer->gnInfo->Ractivations[i], layer->gnInfo->Ractivations[i]* (1 -layer->feaElem->yfeatMat[i]*layer->feaElem->yfeatMat[i]));
+				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (1 -layer->feaElem->yfeatMat[i]*layer->feaElem->yfeatMat[i]) ; 
+				break;
 			default :
 				layer->gnInfo->Ractivations[i] = layer->gnInfo->Ractivations[i]* (layer->feaElem->yfeatMat[i])*(1-layer->feaElem->yfeatMat[i]);
-				
+				break;
 		}
 		
 	}
@@ -1408,13 +1403,18 @@ void updateRactivations(LELink layer){
 
 /** this function compute \sum wji R(zi)-previous layer and adds it to R(zj)**/
 void computeRactivations(LELink layer){
+	int i,off;
+	double * buffer  = malloc (sizeof(double)* BATCHSAMPLES*layer->dim);
+	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
+		copyMatrixOrVec(layer->bias,buffer,layer->dim);
+	}
 	#ifdef CBLAS
-		int i,off;
-		for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
-			cblas_daxpy(layer->dim,1,layer->bias,1,layer->gnInfo->Ractivations + off,1);
-		}
-		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1.0, layer->gnInfo->Ractivations, layer->dim);
+		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1.0, buffer, layer->dim);
 	#endif
+	addMatrixOrVec(buffer, layer->gnInfo->Ractivations,BATCHSAMPLES*layer->dim, 1);
+	free(buffer);
+	
+
 }
 
 /**this function computes sum vji xi */
@@ -1442,15 +1442,15 @@ void computeDirectionalErrDrvOfLayer(LELink layer, int layerid){
 
 
 	}else{
+		/**R(zk) = sum vkz zj**/;
 		computeVweightsProjection(layer);
 		printf("printing R activations before layer id %d \n",layer->id);
 		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
 
-		/** compute R(z) = h'(a)* R(a)**/
+		/** R(zk) += sum wkj Rj **/
 		computeRactivations(layer);
 		printf("printing R activations after layer id %d \n",layer->id);
 		printMatrix(layer->gnInfo->Ractivations,BATCHSAMPLES,layer->dim);
-
 		if (layer->role != OUTPUT){
 			updateRactivations(layer);
 		}
@@ -1964,9 +1964,7 @@ int main(int argc, char *argv[]){
 	printf("done  WEIGHTS OF LAYERS>>>>>>>>>>>>>>>\n");
 
 	//fwdPassOfANN(anndef);
-	//double loglik =computeLogLikelihood(anndef->layerList[numLayers-1]->feaElem->yfeatMat,BATCHSAMPLES,anndef->layerList[numLayers-1]->dim,lab);	
-	///printf("log like %lf\n>>>>",loglik);
-
+	
 
 
 	copyMatrixOrVec(vweightsH,anndef->layerList[0]->gnInfo->vweights,inputDim*anndef->layerList[0]->dim);
@@ -1987,14 +1985,26 @@ int main(int argc, char *argv[]){
 
 	printf("computing and printing JV>>>>>>>>>>>>>>>>>\n");
 	fwdPassOfANN(anndef);
-	//computeDirectionalErrDerivativeofANN(anndef);
+	double loglik =computeLogLikelihood(anndef->layerList[numLayers-1]->feaElem->yfeatMat,BATCHSAMPLES,anndef->layerList[numLayers-1]->dim,lab);	
+	printf("log like %lf\n>>>>",loglik);
+
+	computeDirectionalErrDerivativeofANN(anndef);
 	
 
 	
 	printf("Computing derivative  >>>>>>>>>>>>>>>\n");
 	
-	backPropBatch(anndef,FALSE);
-	
+	backPropBatch(anndef,TRUE);
+
+	printf("PRINTING JV >>>>>>>>>>>>>>>>>>>>>>\n");
+	printf("vbias of hidden layer\n");
+	printMatrix(anndef->layerList[1]->gnInfo->Ractivations,BATCHSAMPLES,anndef->layerList[1]->dim);
+
+
+	printf("PRINTING HJV >>>>>>>>>>>>>>>>>>>>>>\n");	
+	printMatrix(anndef->layerList[1]->feaElem->yfeatMat,BATCHSAMPLES,anndef->layerList[1]->dim);
+
+
 	printf("de/dw of hidden layer\n");
 	printMatrix(anndef->layerList[0]->traininfo->dwFeatMat,anndef->layerList[0]->dim,anndef->layerList[0]->srcDim);
 
