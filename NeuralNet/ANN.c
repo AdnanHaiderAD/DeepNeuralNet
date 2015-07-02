@@ -395,6 +395,10 @@ void setUpForHF(ADLink anndef){
 			layer->gnInfo->vweights = malloc(sizeof(double)*(layer->dim*layer->srcDim));
 			layer->gnInfo->vbiases = malloc(sizeof(double)* layer->dim);
 			layer->gnInfo->Ractivations  = malloc(sizeof(double)*(layer->dim*BATCHSAMPLES));
+			initialiseWithZero(layer->gnInfo->vbiases,layer->dim);
+			initialiseWithZero(layer->gnInfo->vweights,layer->dim*layer->srcDim);
+			initialiseWithZero(layer->gnInfo->Ractivations,layer->dim*BATCHSAMPLES);
+
 		}
 	}
 }
@@ -1438,30 +1442,32 @@ void updateResidue(ADLink anndef){
 	LELink layer;
 	//set del w
 	setSearchDirectionCG(anndef,FALSE);
+	//displayVweights(anndef);
 	// compute Jv i.e 
 	computeDirectionalErrDerivativeofANN(anndef);
 	//compute J^T del L^2 J v i.e A del_w_k+1
 	backPropBatch(anndef,TRUE);
+	printf("norm of G del wk \n");
 	normofGV(anndef);
 	printf("CHECKING RESIDUE UPDATE _________________________\n");
-	printGVoutput(anndef);
+	//printGVoutput(anndef);
 
 	//addTikhonovDamping(anndef);
 	//residue r_k+1 = b - A del w_k+1
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
-		printf("printing  A del W before  layer id %d \n",layer->id);
-		printMatrix(layer->traininfo->dwFeatMat,layer->dim,layer->srcDim);
-		printf("printing  A del W before  layer id %d \n",layer->id);
-		printMatrix(layer->traininfo->dbFeaMat,1,layer->dim);
+		//printf("printing  A del W before  layer id %d \n",layer->id);
+		//printMatrix(layer->traininfo->dwFeatMat,layer->dim,layer->srcDim);
+		//printf("printing  A del W before  layer id %d \n",layer->id);
+		//printMatrix(layer->traininfo->dbFeaMat,1,layer->dim);
 		
 
 		copyMatrixOrVec(layer->traininfo->dwFeatMat,layer->cgInfo->residueUpdateWeights,layer->dim*layer->srcDim);
 		copyMatrixOrVec(layer->traininfo->dbFeaMat,layer->cgInfo->residueUpdateBias,layer->dim);
-		printf("printing  A del W after before  layer id %d \n",layer->id);
-		printMatrix(layer->cgInfo->residueUpdateWeights,layer->dim,layer->srcDim);
-		printf("printing  A del W after  residue layer id %d \n",layer->id);
-		printMatrix(layer->cgInfo->residueUpdateBias,1,layer->dim);
+		//printf("printing  A del W after before  layer id %d \n",layer->id);
+		//printMatrix(layer->cgInfo->residueUpdateWeights,layer->dim,layer->srcDim);
+		//printf("printing  A del W after  residue layer id %d \n",layer->id);
+		//printMatrix(layer->cgInfo->residueUpdateBias,1,layer->dim);
 		
 
 
@@ -1477,18 +1483,18 @@ void updatedelParameters(double alpha){
 	LELink layer;
 	for (i = 0; i<anndef->layerNum;i++){
 		layer = anndef->layerList[i];
-		printf("printing  del W before  layer id %d \n",layer->id);
-		printMatrix(layer->cgInfo->delweightsUpdate,layer->dim,layer->srcDim);
-		printf("printing  del B  before  layer id %d \n",layer->id);
-		printVector(layer->cgInfo->delbiasUpdate,layer->dim);
+		//printf("printing  del W before  layer id %d \n",layer->id);
+		//printMatrix(layer->cgInfo->delweightsUpdate,layer->dim,layer->srcDim);
+		//printf("printing  del B  before  layer id %d \n",layer->id);
+		//printVector(layer->cgInfo->delbiasUpdate,layer->dim);
 
 		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateWeights,layer->cgInfo->delweightsUpdate,layer->dim*layer->srcDim,alpha);
 		addMatrixOrVec(layer->cgInfo->searchDirectionUpdateBias,layer->cgInfo->delbiasUpdate,layer->dim,alpha);
 
-		printf("printing  del W before  layer id %d \n",layer->id);
-		printMatrix(layer->cgInfo->delweightsUpdate,layer->dim,layer->srcDim);
-		printf("printing  del B  before  layer id %d \n",layer->id);
-		printVector(layer->cgInfo->delbiasUpdate,layer->dim);
+		//printf("printing  del W before  layer id %d \n",layer->id);
+		//printMatrix(layer->cgInfo->delweightsUpdate,layer->dim,layer->srcDim);
+		//printf("printing  del B  before  layer id %d \n",layer->id);
+		//printVector(layer->cgInfo->delbiasUpdate,layer->dim);
 
 	}		
 			
@@ -1560,12 +1566,19 @@ void updateRactivations(LELink layer){
 void computeRactivations(LELink layer){
 	int i,off;
 	double * buffer  = malloc (sizeof(double)* BATCHSAMPLES*layer->dim);
+	initialiseWithZero(buffer, BATCHSAMPLES*layer->dim);
 	for (i = 0, off = 0; i < BATCHSAMPLES;i++, off += layer->dim){
 		copyMatrixOrVec(layer->bias,buffer,layer->dim);
 	}
+	//printf("printing buffer id %d \n",layer->id);
+	//printMatrix(buffer,BATCHSAMPLES,layer->dim);
+
 	#ifdef CBLAS
 		cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, layer->dim, BATCHSAMPLES, layer->srcDim, 1, layer->weights, layer->srcDim, layer->src->gnInfo->Ractivations, layer->srcDim, 1.0, buffer, layer->dim);
 	#endif
+	//printf("printing buffer id %d \n",layer->id);
+	//printMatrix(buffer,BATCHSAMPLES,layer->dim);
+	
 	addMatrixOrVec(buffer, layer->gnInfo->Ractivations,BATCHSAMPLES*layer->dim, 1);
 	free(buffer);
 }
@@ -1633,6 +1646,8 @@ void computeDirectionalErrDerivativeofANN(ADLink anndef){
 /**given a vector in parameteric space, this function copies the the segment of the vector that aligns with the parameters of the given layer*/
 void setParameterDirections(double * weights, double* bias, LELink layer){
 	assert(layer->gnInfo !=NULL);
+	initialiseWithZero(layer->gnInfo->vbiases,layer->dim);
+	initialiseWithZero(layer->gnInfo->vweights,layer->dim*layer->srcDim);
 	copyMatrixOrVec(weights,layer->gnInfo->vweights,layer->dim*layer->srcDim);
 	copyMatrixOrVec(bias,layer->gnInfo->vbiases,layer->dim);
 }
@@ -1640,6 +1655,7 @@ void setParameterDirections(double * weights, double* bias, LELink layer){
 void setSearchDirectionCG(ADLink anndef, Boolean Parameter){
 	int i; 
 	LELink layer;
+
 	for (i = 0; i < anndef->layerNum; i++){
 		layer = anndef->layerList[i]; 
 		if(Parameter){
@@ -1680,13 +1696,9 @@ void runConjugateGradient(Boolean firstEverRun){
 		printf("RUN  %d >>>>>>>>>>>>>>>>>>>>>\n",numberofRuns);
 		//----Compute Gauss Newton Matrix product	
 		//set v
-		if(numberofRuns==0){
-			setSearchDirectionCG(anndef,TRUE);
-		}else{
-			setSearchDirectionCG(anndef,FALSE);
-		}
+		setSearchDirectionCG(anndef,TRUE);
 		//displayVweights(anndef);
-		displaydelWs(anndef);
+		//displaydelWs(anndef);
 		//setSearchTemDirectionCG(anndef);
 		// compute Jv i.e 
 		computeDirectionalErrDerivativeofANN(anndef);
@@ -1711,10 +1723,10 @@ void runConjugateGradient(Boolean firstEverRun){
 		alpha = residueDotProductResult/searchVecMatrixVecProductResult;
 
 		updatedelParameters(alpha);
-		displaydelWs(anndef);
+		//displaydelWs(anndef);
 		normofDELW(anndef);
-		updateResidue(anndef);
 		printf("residue norm and pkApk  %lf %lf \n",residueDotProductResult,searchVecMatrixVecProductResult);
+		updateResidue(anndef);
 		prevresidueDotProductResult = residueDotProductResult;
 		//compute r_(k+1)^T r_(k+1)
 		computeResidueDotProduct(anndef, &residueDotProductResult);
@@ -1722,6 +1734,7 @@ void runConjugateGradient(Boolean firstEverRun){
 		beta = residueDotProductResult/prevresidueDotProductResult;
 		//compute p_(k+1) = r_k+1 + beta p_k
 		updateParameterDirection(anndef,beta);
+		computeSearchDirDotProduct(anndef);
 		numberofRuns+=1;
 		int i;
 		printf("alpha  and beta  is %lf %lf \n", alpha,beta);
@@ -2094,7 +2107,7 @@ int main(int argc, char *argv[]){
 	targetDim =10;
 	doHF =TRUE;
 	useGNMatrix =TRUE;
-	maxNumOfCGruns =1;
+	maxNumOfCGruns =5;
 	
 	
 
