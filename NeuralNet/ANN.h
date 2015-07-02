@@ -181,7 +181,7 @@ void accumulateGradientsofANN(ADLink anndef);
 //additional functions to check CG sub-routines just in case 
 void normaliseSearchDirections(ADLink anndef);
 void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
-void computeSearchDirDotProduct(ADLink anndef, double *searchDotProductResult);
+void computeSearchDirDotProduct(ADLink anndef);
 void normofGV(ADLink anndef);
 void normofDELW(ADLink anndef);
 //-------------------------------------------------------------------------------------------------------------------
