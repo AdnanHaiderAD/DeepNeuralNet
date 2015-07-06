@@ -49,6 +49,8 @@ typedef struct _TrainInfo{
 	double *dbFeaMat; /* dE/db  vector */
 	double *updatedWeightMat; /* stores the velocity in the weight space or accumulates  gradeints of weights*/
 	double *updatedBiasMat;/* stores the velocity in the bias space  or accumulates gradients of biases*/
+	double *bestWeightParamsHF;
+	double *bestBiasParamsHF;
 }TrainInfo;
 
 typedef struct _ErrorElem{
@@ -89,22 +91,25 @@ typedef struct _ANNdef{
 	double *labelMat ; /* the target labels : BatchSample by targetDim matrix*/
 }ANNDef;
 
-//---------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 /**This section of the code deals with parsing Command Line arguments**/
+//-------------------------------------------------------------------------------------------------------------------
 void cleanString(char *Name);
 void loadLabels(double *labelMat, double *labels,char*filepath,char *datatype);
 void loadMatrix(double *matrix,char *filepath, char *datatype);
 void parseCfg(char * filepath);
 void parseCMDargs(int argc, char *argv[]);
 
-//---------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 /**This section of the code deals with handling the batch sizes of the data**/
+//-------------------------------------------------------------------------------------------------------------------
 void setBatchSize(int sampleSize);
 /**load entire batch into the neural net**/
 void loadDataintoANN(double *samples, double *labels);
 
-//---------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
+//-------------------------------------------------------------------------------------------------------------------
 void setUpForHF(ADLink anndef);
 void reinitLayerFeaMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
@@ -123,8 +128,9 @@ void initialiseLayer(LELink layer,int i, LELink srcLayer);
 void  initialiseDNN();
 void initialise();
 
-//----------------------------------------------------------------------------------------
-/*this section of the code implements the  forward propagation of a deep neural net **/
+//-------------------------------------------------------------------------------------------------------------------
+/* this section of the code presents auxilary functions that are required*/
+//-------------------------------------------------------------------------------------------------------------------
 /**this funciton copies one matrix/array into another*/
 void copyMatrixOrVec(double *src, double *dest,int dim);
 /* this function allows the addition of  two matrices or two vectors*/
@@ -133,17 +139,21 @@ void scaleMatrixOrVec(double* weightMat, double learningrate,int dim);
 void subtractMatrix(double *dyfeat, double* labels, int dim, double lambda);
 double computeTanh(double x);
 double computeSigmoid(double x);
+
+//-------------------------------------------------------------------------------------------------------------------
+/*this section of the code implements the  forward propagation of a deep neural net **/
+//-------------------------------------------------------------------------------------------------------------------
 void computeNonLinearActOfLayer(LELink layer);
 /* Yfeat is batchSamples by nodeNum matrix(stored as row major)  = X^T(row-major)-batch samples by feaMat * W^T(column major) -feaMat By nodeNum */
 void computeLinearActivation(LELink layer);
 void loadDataintoANN(double *samples, double *labels);
 void fwdPassOfDNN(ADLink anndef);
 
-//----------------------------------------------------------------------------------------
-/*This section of the code implements the back-propation algorithm  to compute the error derivatives**/
-void computeDrvAct(double *dyfeat , double *yfeat,int len);
-void computeActivationDrv (LELink layer);
+//------------------------------------------------------------------------------------------------------
+/*This section of the code implements the back-propation algorithm  to compute the error derivatives*/
+//-------------------------------------------------------------------------------------------------------
 void sumColsOfMatrix(double *dyFeatMat,double *dbFeatMat,int dim,int batchsamples);
+void computeActivationDrv (LELink layer);
 /**compute del^2L J where del^2L is the hessian of the cross-entropy softmax with respect to output acivations **/ 
 void computeLossHessSoftMax(LELink layer);
 /*compute del^2L*J where L can be any convex loss function**/
@@ -152,10 +162,9 @@ void calcOutLayerBackwardSignal(LELink layer,ADLink anndef );
 /**function computes the error derivatives with respect to the weights and biases of the neural net*/
 void backPropBatch(ADLink anndef,Boolean doHessVecProd);
 
-
-
-//-----------------------------------------------------------------------------------------
-/*This section deals with running schedulers to iteratively update the parameters of the neural net**/
+//------------------------------------------------------------------------------------------------------
+/*This section implements gradient descent learning net**/
+//------------------------------------------------------------------------------------------------------
 void fillCache(LELink layer,int dim,Boolean weights);
 void cacheParameters(ADLink anndef);
 Boolean initialiseParameterCaches(ADLink anndef);
@@ -170,25 +179,34 @@ void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
 void TrainDNNGD();
 
-//----------------------------------------------------------------------------------------------------------
-/**this segment of the code is reponsible for accumulating peviously computed  gradients **/
+//------------------------------------------------------------------------------------------------------
+/**this segment of the code is reponsible for accumulating the gradients **/
+//------------------------------------------------------------------------------------------------------
 void setHook(Ptr m, Ptr ptr,int incr);
 Ptr getHook(Ptr m,int incr);
 void accumulateLayerGradient(LELink layer,double weight);
 void accumulateGradientsofANN(ADLink anndef);
 
-//-----------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------
 //additional functions to check CG sub-routines just in case 
+//------------------------------------------------------------------------------------------------------
 void normaliseSearchDirections(ADLink anndef);
 void normaliseResidueDirections(ADLink anndef, double* magnitudeOfGradient);
+void computeNormOfGradient(ADLink anndef);
+void computeNormOfAccuGradient(ADLink anndef);
+void normOfVweights(ADLink anndef);
+void printGVoutput(ADLink anndef);
 void computeSearchDirDotProduct(ADLink anndef);
+void displaySearchDirection(ADLink anndef);
+void displayResidueDirection(ADLink anndef);
+void displayVweights(ADLink anndef);
+void displaydelWs(ADLink anndef);
 void normofGV(ADLink anndef);
 void normofDELW(ADLink anndef);
-//-------------------------------------------------------------------------------------------------------------------
 
-
-//-------------------------------------------------------------------------------------------------------------------
-/*This section of the code performs HF training**/
+//------------------------------------------------------------------------------------------------------
+/* This section of the code implements HF training*/
+//------------------------------------------------------------------------------------------------------
 void updateNeuralNetParamsHF( ADLink anndef);
 //-------------------------------------------------------
 /**This section of the code implements the small sub routinesof the  conjugate Gradient algorithm **/
