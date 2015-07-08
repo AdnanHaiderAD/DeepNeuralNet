@@ -95,7 +95,7 @@ typedef struct _ANNdef{
 /**This section of the code deals with parsing Command Line arguments**/
 //-------------------------------------------------------------------------------------------------------------------
 void cleanString(char *Name);
-void loadLabels(double *labelMat, double *labels,char*filepath,char *datatype);
+void loadLabels(double *labelMat, int *labels,char*filepath,char *datatype);
 void loadMatrix(double *matrix,char *filepath, char *datatype);
 void parseCfg(char * filepath);
 void parseCMDargs(int argc, char *argv[]);
@@ -169,11 +169,11 @@ void fillCache(LELink layer,int dim,Boolean weights);
 void cacheParameters(ADLink anndef);
 Boolean initialiseParameterCaches(ADLink anndef);
 void perfBinClassf(double *yfeatMat, double *predictions,int dataSize);
-double computeLogLikelihood(double* output, int batchsamples, int dim , double* labels);
+double computeLogLikelihood(double* output, int batchsamples, int dim , int* labels);
 /*The function finds the most active node in the output layer for each sample*/
 void findMaxElement(double *matrix, int row, int col, double *vec);
 /** the function calculates the percentage of the data samples correctly labelled by the DNN*/
-double updatateAcc(double *labels, LELink layer,int dataSize);
+double updatateAcc(int *labels, LELink layer,int dataSize);
 void updateNeuralNetParams(ADLink anndef, double lrnrate, double momentum, double weightdecay);
 void updateLearningRate(int currentEpochIdx, double *lrnRate);
 Boolean terminateSchedNotTrue(int currentEpochIdx,double lrnrate);
@@ -227,7 +227,7 @@ void setParameterDirections(double * weights, double* bias, LELink layer);
 void setSearchDirectionCG(ADLink anndef, Boolean Parameter);
 //-----------------------------------------------------
 void initialiseResidueaAndSearchDirection(ADLink anndef);
-void runConjugateGradient(Boolean firstEverRun);
+void runConjugateGradient();
 void TrainDNNHF();
 
 //-------------------------------------------------------------------------------------------------------------------
