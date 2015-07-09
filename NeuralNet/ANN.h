@@ -104,21 +104,27 @@ void parseCMDargs(int argc, char *argv[]);
 /**This section of the code deals with handling the batch sizes of the data**/
 //-------------------------------------------------------------------------------------------------------------------
 void setBatchSize(int sampleSize);
+/**load minibatch into neural net for HF training **/
+void setBatchSizetoHFminiBatch();
+void loadMiniBatchintoANN();
 /**load entire batch into the neural net**/
 void loadDataintoANN(double *samples, double *labels);
 
 //-------------------------------------------------------------------------------------------------------------------
 /**this section of the src code deals with initialisation of ANN **/
 //-------------------------------------------------------------------------------------------------------------------
+unsigned int rand_interval(unsigned int min, unsigned int max);
+void setUpMinibatchforHF(ADLink anndef);
 void setUpForHF(ADLink anndef);
 void reinitLayerFeaMatrices(ADLink anndef);
+void reinitLayerErrFeaMatrices(ADLink anndef);
 void initialiseErrElems(ADLink anndef);
 void initialiseWithZero(double * matrix, int dim);
-double genrandWeight(double limit);
-double drand();
 /* performing the Box Muller transform to map two numbers 
 generated from a uniform distribution to a number from a normal distribution centered at 0 with standard deviation 1 */
 double random_normal();
+double drand();
+double genrandWeight(double limit);
 void initialiseBias(double *biasVec,int dim, int srcDim,ActFunKind actfunc);
 /*the srcDim determines the fan-in to the hidden and output units. The weights ae initialised 
 to be inversely proportional to the sqrt(fanin)
@@ -148,7 +154,7 @@ void computeNonLinearActOfLayer(LELink layer);
 void computeLinearActivation(LELink layer);
 void loadDataintoANN(double *samples, double *labels);
 void fwdPassOfDNN(ADLink anndef);
-
+void computeActivationOfOutputLayer(ADLink anndef);
 //------------------------------------------------------------------------------------------------------
 /*This section of the code implements the back-propation algorithm  to compute the error derivatives*/
 //-------------------------------------------------------------------------------------------------------
@@ -207,11 +213,17 @@ void normofDELW(ADLink anndef);
 //------------------------------------------------------------------------------------------------------
 /* This section of the code implements HF training*/
 //------------------------------------------------------------------------------------------------------
+void resetdelWeights(ADLink anndef);
+void getBestParamsCG(ADLink anndef);
+void cacheParamsCG(ADLink anndef);
 void updateNeuralNetParamsHF( ADLink anndef);
+void backtrackNeuralNetParamsCG(ADLink anndef);
+
 //-------------------------------------------------------
 /**This section of the code implements the small sub routinesof the  conjugate Gradient algorithm **/
 void updateParameterDirection(ADLink anndef,double beta);
 void updateResidue(ADLink anndef);
+double  computeQuadfun( ADLink anndef);
 void updatedelParameters(double alpha);
 void computeSearchDirMatrixProduct( ADLink anndef,double * searchVecMatrixVecProductResult);
 void computeResidueDotProduct(ADLink anndef, double * residueDotProductResult);
@@ -244,5 +256,5 @@ void printYfeat(ADLink anndef, int id);
 void printMatrix(double *matrix,int row,int col);
 void printDBWeights(ADLink anndef, int i);
 
-/*This function is used to check the correctness of implementing the forward pass of DNN and the back-propagtion algorithm*/
+/*This function is used to check the correctness of various routines */
 void unitTests();
