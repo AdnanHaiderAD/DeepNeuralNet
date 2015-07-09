@@ -3,7 +3,9 @@ This toolkit allows:
 
 
 • users to construct complex deep neutral networks to do classification on as well as  perform unsupervised feature extraction on a variety of large datasets ranging from computer vision, natural language processing to speech data
+
 • Networks to be trained using the standard first order gradient descent learning algorithms
+
 •  Networks to be trained using the complex yet powerful second order  Hessian Free learning algorithm.  THIS Toolkit  at present is the only  neural network toolkit in C that contains an implementation of HF !
 
 
