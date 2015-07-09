@@ -21,8 +21,8 @@ void initialiseWeights(double *weightMat,int length,int srcDim);
 void initialiseBias(double *biasVec,int dim, int srcDim);
 double random_normal() ;
 double drand()  ;
-void setHook(Ptr m, Ptr ptr);
-Ptr getHook(Ptr m);
+void setHook(Ptr m, Ptr ptr,int incr);
+Ptr getHook(Ptr m,int incr);
 
 static double randSeed;
 typedef struct _hookStruct{
@@ -31,6 +31,18 @@ typedef struct _hookStruct{
 	double t;
 }Hook;
 
+void settingHookTest(Hook * hook){
+int i;
+	double * hookmat2 = malloc(sizeof(double)*1000);
+   
+   double * hookmat3 = malloc(sizeof(double)*1000);
+   for (i =0 ; i< 1000;i++){
+		hookmat3[i] =1;
+	}
+
+   setHook(hook,hookmat2,2);
+   setHook(hook,hookmat3,1);
+}
 
 
 
@@ -62,33 +74,80 @@ int main(){
 	//---------------------------------------------------------
 	double A3[] = { 0.11, 0.12, 0.13,
                 0.21, 0.22, 0.23 };
-   double *hookmat;             
+   double B2[] = { 1, 2, 0.13,
+                0.21, 0.22, 0.23 };             
+   //double *hookmat;             
 	/** testing pointer hooks-**/
-   printf("hello 1\n"); 
-	hook = malloc(sizeof(Hook)); 
+   hook = malloc(sizeof(Hook)+ sizeof(double)*2000); 
 	hook->matrix = A3;
-   printf("hello 12\n");
-   hookmat = malloc(sizeof(weights));
-   cblas_dcopy(8,weights,1,hookmat,1);
+   hook->id =3;
+   /*cblas_dcopy(8,weights,1,hookmat,1);
    for (i =0 ; i< 8;i++){
    	printf("testing hooks values %d %f \n",i,*(hookmat+i));
    }
    printf(" Ptr  size hookmat  is %lu \n",sizeof(hookmat));
    free(hookmat);
-
-	printf("hello 2 \n");
-   hook->id = 2;
-	printf(" Ptr  size A3  is %lu \n",sizeof(A3));
-   setHook(A3, A3);
-   printf("hello 3 \n"); 
-   hookmat = getHook(A3);
+	
+	hook->id = 2;
+	setHook(A3, A3);
+   hookmat =(double *) getHook(A3);
    A3[1] =1;
    for (i =0 ; i< 6;i++){
    	printf("testing hooks values %d %f \n",i,*(hookmat+i));
    }
    printf(" Ptr  size hook  is %lu \n",sizeof(hook));
-   setHook(hook,A3);
-   free(hook);
+	free(hook);
+   */
+   settingHookTest(hook);
+
+   
+
+
+
+  // free(hookmat2);
+   double* retrievedhookmat2 = (double *)getHook(hook,2);
+   double* retrievedhookmat1 = (double *)getHook(hook,1);
+   
+   memcpy(retrievedhookmat2,retrievedhookmat1,sizeof(double)*1000);
+	for (i =0 ; i< 6;i++){
+		printf("retrieved hookmat value 2 %lf \n",retrievedhookmat2[i]);
+	}
+	for (i =0 ; i< 6;i++){
+		printf("hook matrix value %lf \n",hook->matrix[i]);
+	}
+	for (i =0 ; i< 6;i++){
+		printf("retrievedhookmat1 value %lf \n",retrievedhookmat1[i]);
+	}
+	hook->matrix = B2;
+	
+	double* retrievedhookmat2_ = (double *)getHook(hook,2);
+	memcpy(retrievedhookmat2_,B2,sizeof(B2));
+
+	for (i =0 ; i< 6;i++){
+		printf("hook matrix value %lf \n",hook->matrix[i]);
+	}
+	
+
+	for (i =0 ; i< 10;i++){
+		printf("retrieved hookmat value 2_2 %lf \n",retrievedhookmat2_[i]);
+	}
+
+	double* retrievedhookmat3_ = (double *)getHook(hook,2);
+	for (i =0 ; i< 10;i++){
+		printf("retrieved hookmat value 3_2 %lf \n",retrievedhookmat3_[i]);
+	}
+
+	//free(retrievedhookmat);
+	free(hook);
+	
+
+	//for (i =0 ; i< 6;i++){
+	//	printf("hookmat value %lf \n",hookmat2[i]);
+	//}
+
+	//free(hookmat3);   
+
+
    //free(hook2->matrix);
 
 //----------------------------------------------------------
@@ -121,7 +180,11 @@ int main(){
   float A1[] = { 0.11, 0.12, 0.13,
                 0.21, 0.22, 0.23 };
 
-  float A2[] ={ 1.0 ,0 ,0, 0,1,0};              
+
+
+  float A2[] ={ 0.11, 0.12, 
+  				0.13,0.21, 
+  				0.22, 0.23 };        
   float ones[] ={1,1,1};
   float sumCOls[] ={ 0,0};
   float test[] = { 1,0,1};
@@ -131,25 +194,51 @@ int main(){
   float B[] = { 1, 2,
                 3, 4,
                 5, 6 };
-
+  
+  float B_2[] = { 1, 2,3, 
+  				4,5, 6 }; 
+  float D3[] = { 1,2,
+  				3,4,
+  				5,6,
+  				7,8 };				             
   int ldc = 2;
 
   float C[] = {0.00, 0.00,0.00,
                 0.00, 0.00 ,000,
-             	0.00 ,0.00, 0.00 };
+             	0.00 ,0.00, 0.00,
+             	0.00 ,0.00,0.00 };
 
   /* Compute C = A B */
 
-/** when we say col major and cblasTrans and cblas noTrans then we multiply B*A where A is col-major but B is row-major*/
-  cblas_sgemm (CblasColMajor, 
-               CblasTrans, CblasNoTrans, 3, 3, 2,
-               1.0, A1,2, B, 2, 0.0, C, 3);
-
+/** when we say col major and cblasTrans and cblas noTrans then we multiply B'*A' where A is col-major but B is row-major
+	change only lda of A  and the result is stored in row major
+*/
+/*when we say col major and cblasnoTrans and cblasnoTrans both matrices are presented in col major and we A*B 
+and lda of C will row of A
+and the result is stored in col major*/
+ /* when we say col major cblasno Trans and cblasTrans then we mutliply B'*A' where B' is col major and A is row major
+	change only lda b and result is stored in row major
+ */  
+  printf("printing C before \n");
   printf ("[ %g, %g\n", C[0], C[1]);
   printf ("  %g, %g ]\n", C[2], C[3]);
   printf ("  %g, %g \n", C[4], C[5]);
   printf (" %g, %g\n", C[6], C[7]);
   printf ("  %g ]\n", C[8]);
+  
+  cblas_sgemm (CblasColMajor, 
+               CblasNoTrans, CblasTrans, 3,4,2,
+               1.0, A2,3, D3, 4, 0.0, C, 3);
+
+  printf("printing C \n");
+  printf ("[ %g, %g\n", C[0], C[1]);
+  printf ("  %g, %g ]\n", C[2], C[3]);
+  printf ("  %g, %g \n", C[4], C[5]);
+  printf (" %g, %g\n", C[6], C[7]);
+  printf ("[ %g, %g\n", C[8], C[9]);
+  printf ("  %g, %g ]\n", C[10], C[11]);
+  printf(" done printing C \n");
+  
   
 
 //testing copying segments**/
@@ -427,7 +516,7 @@ void testfunct(double *v){
 
 }
 
-void setHook(Ptr m, Ptr ptr){
+void setHook(Ptr m, Ptr ptr,int incr){
 	Ptr *p;
 	printf(" Ptr is %p \n",p);
 
@@ -435,15 +524,16 @@ void setHook(Ptr m, Ptr ptr){
    printf(" Ptr  is %p \n",p);
    printf(" Ptr  size is %lu \n",sizeof(p));
    printf("hello casting success\n");
-   p -= 2; 
+   p -= incr; 
    printf(" Ptr  is %p \n",p);
+   printf("The difference is %lu", (p+2)-p);
    printf(" Ptr  size is %lu \n",sizeof(p));
    *p = ptr;
 }
 
-Ptr getHook(Ptr m){
+Ptr getHook(Ptr m,int incr){
 	Ptr *p;
-   p = (Ptr *) m; p -=2; return *p;
+   p = (Ptr *) m; p -=incr; return *p;
 }
 
 
