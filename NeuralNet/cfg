@@ -1,17 +1,3 @@
-<<<<<<< HEAD
-momentum : 0.0
-weightdecay : 0
-minLR : 0.0025
-threshold : 0.1234
-maxEpochNum : 1000
-targetDim : 1
-inputDim : 2
-numLayers : 1
-trainingDataSetSize : 40
-validationDataSetSize : 40
-hiddenUnitsPerLayer : 1
-activationfunctionsPerLayer : SIGMOID
-=======
 doHF : TRUE
 useGNMatrix : TRUE
 initLR : 0.01
@@ -25,6 +11,5 @@ trainingDataSetSize : 30000
 validationDataSetSize : 10000
 hiddenUnitsPerLayer : 500
 activationfunctionsPerLayer : TANH,SOFTMAX
->>>>>>> hessianFreeImplementation
 Errfunc : XENT
 
